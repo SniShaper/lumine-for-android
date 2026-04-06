@@ -6,7 +6,7 @@ OUT_DIR=android/app/libs
 AAR_NAME=LumineCore.aar
 PKG=./mobile
 GOFLAGS_BIND=-mod=mod
-ANDROID_API=36
+ANDROID_API=24
 POWERSHELL=powershell -ExecutionPolicy Bypass -File
 
 ANDROID_HOME?=$(ANDROID_SDK_ROOT)

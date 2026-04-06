@@ -2,7 +2,7 @@ param(
     [string]$AndroidHome = "D:\Android\Sdk",
     [string]$JavaHome = "D:\Android\jbr",
     [string]$Output = "android\libs\LumineCore.aar",
-    [int]$AndroidApi = 36,
+    [int]$AndroidApi = 24,
     [string]$Package = "./mobile"
 )
 

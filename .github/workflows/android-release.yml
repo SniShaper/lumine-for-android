@@ -1,0 +1,200 @@
+name: Android Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Optional tag name to publish, for example v1.0.0
+        required: false
+        type: string
+      release_name:
+        description: Optional GitHub release title
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_API_LEVEL: '36'
+      ANDROID_BUILD_TOOLS: '36.0.0'
+      ANDROID_NDK_VERSION: '30.0.14904198'
+      RELEASE_APK_GLOB: android/app/build/outputs/apk/release/*.apk
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Resolve Android environment
+        shell: bash
+        run: |
+          if [[ -n "${ANDROID_SDK_ROOT:-}" && -z "${ANDROID_HOME:-}" ]]; then
+            echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          elif [[ -n "${ANDROID_HOME:-}" && -z "${ANDROID_SDK_ROOT:-}" ]]; then
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          fi
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -n "$sdk_root" ]]; then
+            echo "ANDROID_NDK_HOME=$sdk_root/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+            echo "NDK_HOME=$sdk_root/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install Android packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Prepare Go mobile toolchain
+        shell: bash
+        env:
+          GOFLAGS: -mod=mod
+        run: |
+          GOBIN="$(go env GOPATH)/bin"
+          echo "$GOBIN" >> "$GITHUB_PATH"
+          export PATH="$GOBIN:$PATH"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Download Go dependencies
+        shell: bash
+        env:
+          GOFLAGS: -mod=mod
+        run: go mod download
+
+      - name: Build Android core AAR
+        shell: bash
+        env:
+          GOFLAGS: -mod=mod
+        run: |
+          mkdir -p android/app/libs
+          gomobile bind \
+            -target=android \
+            -androidapi "${ANDROID_API_LEVEL}" \
+            -o android/app/libs/LumineCore.aar \
+            ./mobile
+
+      - name: Prepare signing keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
+
+      - name: Build APKs
+        shell: bash
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Compute artifact metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
+          INPUT_RELEASE_NAME: ${{ github.event.inputs.release_name }}
+        run: |
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${INPUT_TAG_NAME}"
+          fi
+
+          if [[ -n "$tag" ]]; then
+            suffix="$tag"
+            should_release=true
+          else
+            suffix="${GITHUB_SHA::7}"
+            should_release=false
+          fi
+
+          release_name="${INPUT_RELEASE_NAME}"
+          if [[ -z "$release_name" && -n "$tag" ]]; then
+            release_name="$tag"
+          fi
+
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          echo "artifact_suffix=$suffix" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumine-android-${{ steps.meta.outputs.artifact_suffix }}
+          path: |
+            ${{ env.RELEASE_APK_GLOB }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub release
+        if: steps.meta.outputs.should_release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-assets
+          shopt -s nullglob
+          release_apks=(android/app/build/outputs/apk/release/*.apk)
+          if [[ ${#release_apks[@]} -eq 0 ]]; then
+            echo "Release APKs not found"
+            exit 1
+          fi
+          for release_apk in "${release_apks[@]}"; do
+            base_name="$(basename "$release_apk")"
+            cp "$release_apk" "release-assets/lumine-${{ steps.meta.outputs.artifact_suffix }}-${base_name}"
+          done
+
+          tag="${{ steps.meta.outputs.release_tag }}"
+          title="${{ steps.meta.outputs.release_name }}"
+          if [[ -z "$title" ]]; then
+            title="$tag"
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+          else
+            gh release create "$tag" release-assets/* \
+              --title "$title" \
+              --generate-notes \
+              --target "$GITHUB_SHA"
+          fi

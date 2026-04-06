@@ -1,0 +1,123 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+def envOrProp = { String name ->
+    def envValue = System.getenv(name)
+    if (envValue != null && !envValue.trim().isEmpty()) {
+        return envValue
+    }
+    def propValue = project.findProperty(name)
+    return propValue == null ? null : propValue.toString()
+}
+
+def releaseKeystorePath = envOrProp('ANDROID_KEYSTORE_PATH')
+def releaseStorePassword = envOrProp('ANDROID_KEYSTORE_PASSWORD')
+def releaseKeyAlias = envOrProp('ANDROID_KEY_ALIAS')
+def releaseKeyPassword = envOrProp('ANDROID_KEY_PASSWORD')
+def hasReleaseSigning = releaseKeystorePath != null &&
+        file(releaseKeystorePath).exists() &&
+        releaseStorePassword != null &&
+        releaseKeyAlias != null &&
+        releaseKeyPassword != null
+
+android {
+    namespace 'com.moi.lumine'
+    compileSdk 36
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
+            universalApk false
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId "com.moi.lumine"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables {
+            useSupportLibrary true
+        }
+    }
+
+    buildTypes {
+        debug {}
+        release {
+            minifyEnabled true
+            shrinkResources true
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.11'
+    }
+    packagingOptions {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation platform('androidx.compose:compose-bom:2024.02.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'com.google.android.material:material:1.11.0'
+    
+    // JSON & Networking
+    implementation "com.squareup.moshi:moshi-kotlin:1.15.1"
+    
+    // Lifecycle & Navigation
+    implementation "androidx.navigation:navigation-compose:2.7.7"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0"
+
+    // Gomobile generated AAR
+    implementation fileTree(dir: 'libs', include: ['*.aar'])
+
+    
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation platform('androidx.compose:compose-bom:2024.02.01')
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+}

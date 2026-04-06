@@ -1,0 +1,179 @@
+{
+  "log_level": "INFO",
+  "socks5_address": "127.0.0.1:1080",
+  "http_address": "127.0.0.1:1225",
+  "dns_addr": "https://987.cloudflare-gateway.com/dns-query",
+  "socks5_for_doh": "",
+  "udp_minsize": 4096,
+  "dns_singleflight": false,
+  "dns_cache_ttl": 3600,
+  "dns_cache_cap": 4096,
+  "ttl_singleflight": false,
+  "ttl_cache_ttl": 86400,
+  "ttl_cache_cap": 1024,
+  "fake_ttl_rules": "0-1;3=3;5-1;8-2;13-3;20=18",
+  "transmit_file_limit": 2,
+  "default_policy": {
+    "reply_first": false,
+    "dns_mode": "prefer_ipv4",
+    "connect_timeout": "10s",
+    "tls13_only": false,
+    "http_status": 0,
+    "mode": "tls-rf",
+    "mod_minor_ver": true,
+    "num_records": 4,
+    "num_segs": 1,
+    "send_interval": "50ms",
+    "oob": false,
+    "oob_ex": false,
+    "fake_ttl": 0,
+    "fake_sleep": "200ms",
+    "attempts": 2,
+    "max_ttl": 64,
+    "single_timeout": "500ms"
+  },
+  "ip_policies": {
+    "10.0.0.0/8;172.16.0.0/12;192.168.0.0/16;fc00::/7": {
+      "mode": "raw"
+    },
+    "76.223.126.88;(216.150.1|216.150.16|216.198.79|216.230.84|216.230.86|64.29.17|76.76.21|66.33.60|198.169.1|198.169.2|64.239.109|64.239.123).0/24;64.125.81.216/29": {
+      "map_to": "64.29.17.1",
+      "num_records": 1,
+      "num_segs": 3,
+      "oob": true
+    },
+    "(151.101|146.75|199.232).0.0/16": {
+      "map_to": "146.75.48.0/22"
+    },
+    "3.160.0.0/12;18.64.0.0/13;(3.172|13.224|108.156).0.0/14;(13.32|18.154|18.160|18.164|18.172|18.238|18.244|52.84|65.8|108.138).0.0/15;(13.35|13.249|15.158|54.182|54.192|54.230|64.252|99.84|99.86|130.176|143.204|144.220).0.0/16;(52.124.128|52.222.128|54.239.128|71.152.0).0/17;(52.46.0|54.230.192|54.240.128|70.132.0).0/18;(23.91.0|52.82.128|204.246.160|205.251.192|216.137.32).0/19;(18.199.64|44.220.192).0/20;(3.107.40|35.93.168|47.129.80|51.44.232|205.251.248).0/21;(3.146.232|3.147.164|3.147.244|18.175.64|18.230.228).0/22;(3.101.158|3.236.48|13.134.24|13.134.94|18.192.142|18.200.212|56.125.46).0/23;(3.11.53|3.29.40|3.128.93|3.134.215|13.113.203|13.124.199|13.228.69|15.188.184|34.195.252|34.226.14|35.158.136|36.103.232|43.218.56|44.222.66|44.227.178|52.47.139|52.57.254|56.125.48|57.182.253|58.254.138|99.79.169|116.129.226|118.193.97|119.147.182|120.232.236|180.163.57).0/24;(3.231.2|34.216.51|52.56.127|57.183.42|111.13.185).0/25;(3.10.17|3.35.130|15.207.13|15.207.213|18.216.170|44.234.108|111.13.171|120.253.245).128/25;(13.54.63|13.210.67|35.167.191|52.15.127|52.52.191|52.66.194|52.78.247|54.233.255).128/26;(3.236.169|13.233.177|18.229.220|34.223.80|35.162.63|52.199.127|120.52.153|120.253.240).192/26;(3.29.57|13.59.250|13.203.133|43.218.71|52.212.248|52.220.191).0/26;(13.113.196|120.52.12).64/26;(3.234.232.224|34.223.12.224|120.52.22.96|120.52.39.128|120.253.241.160)/27;44.234.90.252/30": {
+      "map_to": "futuregadget-lab.com"
+    },
+    "162.125.0.0/16": {
+      "map_to": "162.125.1.0/24",
+      "mode": "tls-rf",
+      "num_records": 1,
+      "num_segs": 3
+    }
+  },
+  "domain_policies": {
+    "*(threads|cdninstagram|instagram).com": {
+      "host": "57.144.74.192"
+    },
+    "*cloudflare(|-gateway|-dns).com;one.one.one.one;*(workers|pages).dev": {
+      "host": "104.21.3.221"
+    },
+    "*(wikimedia|wikipedia|wiktionary|wikiversity|wikivoyage|wikisource|wikinews|wikidata|mediawiki|wikifunctions|wikibooks|wikiquote).org": {
+      "host": "185.15.58.224"
+    },
+    "upload.wikimedia.org": {
+      "host": "185.15.58.240"
+    },
+    "web.archive.org": {
+      "host": "207.241.237.3"
+    },
+    "(www.|)archive.org": {
+      "host": "207.241.225.120"
+    },
+    "(gist.|)github.com": {
+      "host": "20.207.73.82"
+    },
+    "api.github.com": {
+      "host": "20.207.73.85"
+    },
+    "codeload.github.com": {
+      "host": "20.207.73.88"
+    },
+    "uploads.github.com": {
+      "host": "20.207.73.81"
+    },
+    "alive.github.com": {
+      "host": "140.82.112.26"
+    },
+    "*(github.io|.githubusercontent.com);(page|doc)s.github.com": {
+      "host": "146.75.48.133"
+    },
+    "objects-origin.githubusercontent.com": {
+      "host": "140.82.113.22"
+    },
+    "(cn|purr|et).nytimes.com": {},
+    "*nyt(imes|).com": {
+      "host": "199.232.137.164"
+    },
+    "*(google.com|google.com.hk|gmail.com|google.dev|googleapis.com|gstatic.com|googleusercontent.com|.google|goo.gl|translate.goog|android.com|ai.dev|blogger.com|blogspot.com|blogblog.com|chrome.com|chromium.org|golang.org|youtube.com|youtu.be|youtube-nocookie.com|.ytimg.com|.ggpht.com|gvt1.com|withgoogle.com|googlesource.com)": {
+      "host": "8.137.102.117",
+      "tls13_only": true,
+      "http_status": 302
+    },
+    "*.googlevideo.com": {
+      "dns_mode": "prefer_ipv6"
+    },
+    "*telegram.(org|me);t.me": {
+      "host": "149.154.161.145"
+    },
+    "zws5(|-1).web.telegram.org": {
+      "host": "149.154.170.200"
+    },
+    "platform.twitter.com": {
+      "host": "146.75.120.157"
+    },
+    "*x.com;(video|abs|pbs).twimg.com": {
+      "host": "172.64.229.211"
+    },
+    "abs-0.twimg.com": {
+      "host": "146.75.48.159"
+    },
+    "video.pscp.tv": {
+      "host": "146.75.34.164"
+    },
+    "*bing.(com|cn|net);r.bing.com;bing.microsoftapp.net;*microsoft(|online).com;*(live|msn|skype).com;*office.(com|net)": {
+      "mode": "ttl-d"
+    },
+    "open.spotify.com": {
+      "host": "2001:67c:2960:6464::9765:c32a",
+      "mode": "tls-rf"
+    },
+    "onedrive.live.com": {
+      "host": "13.107.139.11",
+      "mode": "tls-rf",
+      "num_records": 1,
+      "num_segs": 3
+    },
+    "skyapi.onedrive.live.com": {
+      "host": "13.107.42.12",
+      "mode": "tls-rf",
+      "num_records": 1,
+      "num_segs": 3
+    },
+    "*disk.yandex.com": {
+      "host": "87.250.250.50",
+      "mode": "tls-rf",
+      "num_records": 1,
+      "num_segs": 3
+    },
+    "*vercel.app": {
+      "host": "64.29.17.1",
+      "num_records": 1,
+      "num_segs": 4,
+      "oob": true
+    },
+    "ocsp-certum.com;ocsp.sectigo.com;ocsp.digicert.c(om|n);ocsps.ssl.com;*amazontrust.com;ocsp.comodoca.com;o.pki.goog;safebrowsing.googleapis.com;dl.google.com;chomium.org": {
+      "mode": "raw",
+      "host": "self"
+    },
+    "imp.pixiv.net;nav-edge.smartscreen.microsoft.com;collector.github.com;*ads.nicovideo.jp;browser.events.data.msn.cn": {
+      "mode": "block"
+    },
+    "pixiv.net;www.pixiv.net;app.pixiv.net;oauth.secure.pixiv.net;pixiv.pximg.net": {
+      "host": "210.140.139.152"
+    },
+    "i.pximg.net;s.pximg.net;img-works.pximg.net": {
+      "host": "210.140.139.135"
+    },
+    "a.pixiv.org;d.pixiv.org": {
+      "host": "210.140.139.183"
+    },
+    "lc-event.pixiv.net": {
+      "host": "210.140.139.185"
+    }
+  }
+}

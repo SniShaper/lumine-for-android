@@ -1,0 +1,58 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# OS files
+.DS_Store
+Thumbs.db
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.zip
+*.apk
+*.aab
+*.aar
+*.jar
+*.jks
+*.keystore
+*.p12
+!android/gradle/wrapper/gradle-wrapper.jar
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+.signing/
+
+# Editor/IDE
+.idea/
+.vscode/
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.idea/
+
+# Generated mobile core artifacts
+android/libs/
+android/app/libs/

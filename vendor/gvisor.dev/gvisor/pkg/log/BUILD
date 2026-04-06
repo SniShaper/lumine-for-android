@@ -1,0 +1,40 @@
+load("//tools:defs.bzl", "go_library", "go_test")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    licenses = ["notice"],
+)
+
+go_library(
+    name = "log",
+    srcs = [
+        "bug.go",
+        "file.go",
+        "glog.go",
+        "json.go",
+        "json_k8s.go",
+        "log.go",
+        "rate_limited.go",
+    ],
+    marshal = False,
+    stateify = False,
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "//pkg/linewriter",
+        "//pkg/sync",
+        "@org_golang_x_time//rate:go_default_library",
+    ],
+)
+
+go_test(
+    name = "log_test",
+    size = "small",
+    srcs = [
+        "bug_test.go",
+        "json_test.go",
+        "log_test.go",
+    ],
+    library = ":log",
+)

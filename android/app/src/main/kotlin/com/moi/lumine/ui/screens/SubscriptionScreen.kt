@@ -1,5 +1,13 @@
 package com.moi.lumine.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,9 +63,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.moi.lumine.model.SubscriptionProfile
 import com.moi.lumine.ui.ConfigViewModel
+import com.moi.lumine.ui.SubscriptionImportStage
+import com.moi.lumine.ui.SubscriptionImportState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +78,7 @@ fun SubscriptionScreen(navController: NavController, viewModel: ConfigViewModel)
     val busyId by viewModel.subscriptionBusyId.collectAsState()
     val isRefreshingAll by viewModel.isRefreshingAllSubscriptions.collectAsState()
     val message by viewModel.subscriptionMessage.collectAsState()
+    val importState by viewModel.subscriptionImportState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -74,6 +86,15 @@ fun SubscriptionScreen(navController: NavController, viewModel: ConfigViewModel)
         val current = message ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(current)
         viewModel.consumeSubscriptionMessage()
+    }
+
+    LaunchedEffect(showAddDialog, importState.stage) {
+        if (!showAddDialog || importState.stage != SubscriptionImportStage.Success) {
+            return@LaunchedEffect
+        }
+        delay(850)
+        showAddDialog = false
+        viewModel.resetSubscriptionImportState()
     }
 
     Scaffold(
@@ -119,13 +140,6 @@ fun SubscriptionScreen(navController: NavController, viewModel: ConfigViewModel)
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    Text(
-                        text = "从 URL 拉取配置，选中后立即应用到当前 VPN。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 items(items = subscriptions, key = { it.id }) { subscription ->
                     SubscriptionCard(
                         subscription = subscription,
@@ -142,17 +156,16 @@ fun SubscriptionScreen(navController: NavController, viewModel: ConfigViewModel)
 
     if (showAddDialog) {
         AddSubscriptionDialog(
+            importState = importState,
             isBusy = busyId == ConfigViewModel.NEW_SUBSCRIPTION_ID,
             onDismiss = {
                 if (busyId != ConfigViewModel.NEW_SUBSCRIPTION_ID) {
                     showAddDialog = false
+                    viewModel.resetSubscriptionImportState()
                 }
             },
             onConfirm = { name, url ->
                 viewModel.addSubscription(name, url)
-                if (name.isNotBlank() && url.isNotBlank()) {
-                    showAddDialog = false
-                }
             }
         )
     }
@@ -191,12 +204,22 @@ private fun SubscriptionCard(
     onDelete: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val containerColor by animateColorAsState(
+        targetValue = when {
+            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+            isBusy -> MaterialTheme.colorScheme.surfaceVariant
+            else -> MaterialTheme.colorScheme.surface
+        },
+        animationSpec = tween(durationMillis = 220),
+        label = "subscription_container"
+    )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize(animationSpec = tween(durationMillis = 220))
             .clickable(enabled = !isBusy, onClick = onApply),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
@@ -269,9 +292,14 @@ private fun SubscriptionCard(
                     }
                 }
             }
-            if (isBusy) {
+            AnimatedVisibility(
+                visible = isBusy,
+                enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(180)),
+                exit = fadeOut(animationSpec = tween(180)) + shrinkVertically(animationSpec = tween(180))
+            ) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else {
+            }
+            if (!isBusy) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
@@ -280,6 +308,7 @@ private fun SubscriptionCard(
 
 @Composable
 private fun AddSubscriptionDialog(
+    importState: SubscriptionImportState,
     isBusy: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (name: String, url: String) -> Unit
@@ -289,9 +318,9 @@ private fun AddSubscriptionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加订阅") },
+        title = { Text(if (importState.stage == SubscriptionImportStage.Success) "导入完成" else "添加订阅") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -306,6 +335,60 @@ private fun AddSubscriptionDialog(
                     singleLine = true,
                     enabled = !isBusy
                 )
+
+                AnimatedVisibility(
+                    visible = importState.stage != SubscriptionImportStage.Idle,
+                    enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(180)),
+                    exit = fadeOut(animationSpec = tween(180)) + shrinkVertically(animationSpec = tween(180))
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = when (importState.stage) {
+                                SubscriptionImportStage.Success -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f)
+                                SubscriptionImportStage.Error -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = importState.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            importState.detail?.takeIf { it.isNotBlank() }?.let { detail ->
+                                Text(
+                                    text = detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            when {
+                                importState.progress != null -> {
+                                    LinearProgressIndicator(
+                                        progress = { importState.progress.coerceIn(0f, 1f) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                importState.stage != SubscriptionImportStage.Error -> {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                            if (importState.stage == SubscriptionImportStage.Success) {
+                                Text(
+                                    text = "配置即将出现在列表中",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -313,12 +396,18 @@ private fun AddSubscriptionDialog(
                 onClick = { onConfirm(name, url) },
                 enabled = !isBusy
             ) {
-                Text(if (isBusy) "导入中..." else "导入")
+                Text(
+                    when {
+                        isBusy -> "导入中..."
+                        importState.stage == SubscriptionImportStage.Error -> "重试"
+                        else -> "导入"
+                    }
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !isBusy) {
-                Text("取消")
+                Text(if (importState.stage == SubscriptionImportStage.Success) "完成" else "取消")
             }
         }
     )

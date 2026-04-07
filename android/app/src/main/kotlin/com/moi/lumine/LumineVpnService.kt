@@ -11,8 +11,11 @@ import android.util.Log
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mobile.Mobile // This will be available after gomobile bind
@@ -23,8 +26,14 @@ class LumineVpnService : VpnService() {
     private var coreTunFd: Int? = null
     private var configName: String = "config" // Default config name
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val transitionLock = Any()
+    private var logPumpJob: Job? = null
     @Volatile private var isStarting = false
     @Volatile private var isStopping = false
+    @Volatile private var coreStarted = false
+    @Volatile private var coreOwnsTunFd = false
+    @Volatile private var pendingStopRequested = false
+    @Volatile private var coreStopIssued = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
@@ -36,16 +45,23 @@ class LumineVpnService : VpnService() {
 
         configName = intent?.getStringExtra("CONFIG_NAME") ?: "config"
         startVpn()
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun startVpn() {
-        if (isStarting || isStopping || vpnInterface != null) {
-            return
+        synchronized(transitionLock) {
+            if (isStarting || isStopping || coreStarted || vpnInterface != null || coreTunFd != null) {
+                Log.i("LumineVpn", "Ignoring duplicate start request")
+                return
+            }
+            isStarting = true
+            pendingStopRequested = false
+            coreStopIssued = false
         }
 
         try {
-            isStarting = true
+            VpnRuntimeState.clearLogs()
+            VpnRuntimeState.setActive(false)
             VpnRuntimeState.setStatus("starting", "正在建立 VPN")
             startForeground(NOTIFICATION_ID, buildNotification("正在启动代理"))
 
@@ -74,22 +90,46 @@ class LumineVpnService : VpnService() {
                 serviceScope.launch {
                     try {
                         ensureConfigFile(configName)
+                        if (consumePendingStopRequest()) {
+                            closePendingTunFd()
+                            VpnRuntimeState.setActive(false)
+                            VpnRuntimeState.setStatus("idle", "点此启动服务")
+                            return@launch
+                        }
+
                         Mobile.setWorkingDir(filesDir.absolutePath)
+                        synchronized(transitionLock) {
+                            if (pendingStopRequested) {
+                                closePendingTunFd()
+                                VpnRuntimeState.setActive(false)
+                                VpnRuntimeState.setStatus("idle", "点此启动服务")
+                                return@launch
+                            }
+                            coreOwnsTunFd = true
+                        }
                         val error = Mobile.startLumine(fd.toLong(), configName)
                         if (error.isNotEmpty()) {
-                            runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
-                            coreTunFd = null
+                            coreOwnsTunFd = false
+                            closePendingTunFd()
                             Log.e("LumineVpn", "Go core failed: $error")
                             updateNotification("启动失败: $error")
+                            VpnRuntimeState.setActive(false)
                             VpnRuntimeState.setStatus("error", "启动失败: $error")
                             stopVpn()
                         } else {
+                            coreStarted = true
                             Log.i("LumineVpn", "Lumine started successfully")
+                            VpnRuntimeState.setActive(true)
                             VpnRuntimeState.setStatus("running", "代理运行中")
                             updateNotification("代理运行中")
+                            startLogPump()
+                            if (consumePendingStopRequest()) {
+                                stopVpn()
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e("LumineVpn", "Failed to initialize Go core", e)
+                        VpnRuntimeState.setActive(false)
                         VpnRuntimeState.setStatus("error", "核心初始化失败")
                         stopVpn()
                     } finally {
@@ -98,25 +138,37 @@ class LumineVpnService : VpnService() {
                 }
             } else {
                 isStarting = false
+                VpnRuntimeState.setActive(false)
                 VpnRuntimeState.setStatus("error", "VPN 建立失败")
             }
         } catch (e: Exception) {
             Log.e("LumineVpn", "Failed to start VPN", e)
             isStarting = false
+            VpnRuntimeState.setActive(false)
             VpnRuntimeState.setStatus("error", "启动 VPN 失败")
             stopVpn()
         }
     }
 
     private fun stopVpn() {
-        if (isStopping) {
-            return
+        synchronized(transitionLock) {
+            if (isStopping) {
+                Log.i("LumineVpn", "Ignoring duplicate stop request")
+                return
+            }
+            if (!isStarting && !coreStarted && vpnInterface == null && coreTunFd == null) {
+                VpnRuntimeState.setStatus("idle", "点此启动服务")
+                return
+            }
+            pendingStopRequested = true
+            isStopping = true
         }
-        isStopping = true
         serviceScope.launch {
             try {
-                runCatching { Mobile.stopLumine() }
-                coreTunFd = null
+                stopLogPump()
+                performCoreShutdownIfNeeded()
+                pendingStopRequested = false
+                VpnRuntimeState.setActive(false)
 
                 val tun = vpnInterface
                 vpnInterface = null
@@ -144,9 +196,11 @@ class LumineVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        stopLogPump()
+        performCoreShutdownIfNeeded()
         serviceScope.cancel()
-        runCatching { Mobile.stopLumine() }
-        coreTunFd = null
+        pendingStopRequested = false
+        VpnRuntimeState.setActive(false)
         runCatching { vpnInterface?.close() }
         vpnInterface = null
         isStarting = false
@@ -174,6 +228,73 @@ class LumineVpnService : VpnService() {
         }
 
         throw IllegalStateException("Config file not found: $name.json")
+    }
+
+    private fun startLogPump() {
+        if (logPumpJob?.isActive == true) {
+            return
+        }
+        logPumpJob = serviceScope.launch {
+            while (isActive) {
+                publishPendingLogs()
+                delay(300)
+            }
+        }
+    }
+
+    private fun stopLogPump() {
+        logPumpJob?.cancel()
+        logPumpJob = null
+    }
+
+    private fun publishPendingLogs() {
+        val newLogs = Mobile.getLogs()
+        if (newLogs.isBlank()) {
+            return
+        }
+        val lines = newLogs
+            .lineSequence()
+            .map { it.trimEnd() }
+            .filter { it.isNotBlank() }
+            .toList()
+        VpnRuntimeState.appendLogs(lines)
+    }
+
+    private fun consumePendingStopRequest(): Boolean {
+        synchronized(transitionLock) {
+            if (!pendingStopRequested) {
+                return false
+            }
+            pendingStopRequested = false
+            return true
+        }
+    }
+
+    private fun closePendingTunFd() {
+        val fd = coreTunFd ?: return
+        coreTunFd = null
+        runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
+    }
+
+    private fun performCoreShutdownIfNeeded() {
+        val shouldStopCore = synchronized(transitionLock) {
+            if (coreStopIssued) {
+                return@synchronized false
+            }
+            coreStopIssued = true
+            coreOwnsTunFd || coreStarted
+        }
+
+        if (shouldStopCore) {
+            runCatching { Mobile.stopLumine() }
+        } else {
+            closePendingTunFd()
+        }
+
+        publishPendingLogs()
+        coreStarted = false
+        coreOwnsTunFd = false
+        coreTunFd = null
     }
 
     private fun buildNotification(contentText: String): Notification {

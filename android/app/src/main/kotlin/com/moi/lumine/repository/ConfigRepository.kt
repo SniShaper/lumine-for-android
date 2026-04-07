@@ -8,6 +8,7 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -99,7 +100,11 @@ class ConfigRepository(private val context: Context) {
         }
     }
 
-    suspend fun downloadConfig(url: String): LumineConfig = withContext(Dispatchers.IO) {
+    suspend fun downloadConfig(
+        url: String,
+        onStatus: (DownloadStatus) -> Unit = {}
+    ): LumineConfig = withContext(Dispatchers.IO) {
+        onStatus(DownloadStatus(DownloadPhase.Connecting))
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15000
             readTimeout = 20000
@@ -112,11 +117,41 @@ class ConfigRepository(private val context: Context) {
         try {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.bufferedReader().use { it?.readText().orEmpty() }
             if (code !in 200..299) {
+                val body = stream?.bufferedReader().use { it?.readText().orEmpty() }
                 throw IllegalStateException("订阅请求失败: HTTP $code ${body.take(160)}".trim())
             }
 
+            val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
+            val output = ByteArrayOutputStream()
+            stream?.use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var downloadedBytes = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) {
+                        break
+                    }
+                    output.write(buffer, 0, count)
+                    downloadedBytes += count
+                    onStatus(
+                        DownloadStatus(
+                            phase = DownloadPhase.Downloading,
+                            downloadedBytes = downloadedBytes,
+                            totalBytes = totalBytes
+                        )
+                    )
+                }
+            }
+
+            onStatus(
+                DownloadStatus(
+                    phase = DownloadPhase.Parsing,
+                    downloadedBytes = output.size().toLong(),
+                    totalBytes = totalBytes
+                )
+            )
+            val body = output.toString(Charsets.UTF_8.name())
             return@withContext adapter.fromJson(body)
                 ?: throw IllegalArgumentException("订阅内容不是有效的 Lumine 配置 JSON")
         } finally {
@@ -152,4 +187,16 @@ class ConfigRepository(private val context: Context) {
         private const val KEY_SELECTED_CONFIG = "selected_config_name"
         private const val KEY_SUBSCRIPTIONS = "subscriptions_json"
     }
+}
+
+data class DownloadStatus(
+    val phase: DownloadPhase,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long? = null
+)
+
+enum class DownloadPhase {
+    Connecting,
+    Downloading,
+    Parsing
 }

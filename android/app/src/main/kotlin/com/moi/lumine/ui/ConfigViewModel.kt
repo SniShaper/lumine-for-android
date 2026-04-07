@@ -8,13 +8,11 @@ import com.moi.lumine.VpnStatus
 import com.moi.lumine.model.LumineConfig
 import com.moi.lumine.model.SubscriptionProfile
 import com.moi.lumine.repository.ConfigRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import com.moi.lumine.repository.DownloadPhase
+import com.moi.lumine.repository.DownloadStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import mobile.Mobile
 
 class ConfigViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = ConfigRepository(application)
@@ -43,11 +41,11 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
     private val _subscriptionMessage = MutableStateFlow<String?>(null)
     val subscriptionMessage: StateFlow<String?> = _subscriptionMessage
 
-    private val _logs = MutableStateFlow<List<String>>(emptyList())
-    val logs: StateFlow<List<String>> = _logs
+    private val _subscriptionImportState = MutableStateFlow(SubscriptionImportState())
+    val subscriptionImportState: StateFlow<SubscriptionImportState> = _subscriptionImportState
 
-    private val _isVpnActive = MutableStateFlow(false)
-    val isVpnActive: StateFlow<Boolean> = _isVpnActive
+    val logs: StateFlow<List<String>> = VpnRuntimeState.logs
+    val isVpnActive: StateFlow<Boolean> = VpnRuntimeState.isVpnActive
 
     val vpnStatus: StateFlow<VpnStatus> = VpnRuntimeState.status
 
@@ -58,61 +56,16 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         refreshConfigList()
         refreshSubscriptions()
         loadConfig(_selectedConfigName.value)
-        startStatusPolling()
-        startLogPolling()
-    }
-
-    private fun startStatusPolling() {
-        viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
-                val running = Mobile.isRunning()
-                withContext(Dispatchers.Main) {
-                    _isVpnActive.value = running
-                    if (running && vpnStatus.value.phase != "running") {
-                        VpnRuntimeState.setStatus("running", "代理运行中")
-                    } else if (!running && vpnStatus.value.phase == "running") {
-                        VpnRuntimeState.setStatus("idle", "点此启动服务")
-                    }
-                }
-                delay(1000)
-            }
-        }
-    }
-
-    private fun startLogPolling() {
-        viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
-                val running = Mobile.isRunning()
-                var updatedLogs: List<String>? = null
-                val newLogs = Mobile.getLogs()
-                if (newLogs.isNotBlank()) {
-                    val lines = newLogs
-                        .lineSequence()
-                        .map { it.trimEnd() }
-                        .filter { it.isNotBlank() }
-                        .toList()
-                    if (lines.isNotEmpty()) {
-                        updatedLogs = (_logs.value + lines).takeLast(1000)
-                    }
-                }
-                val logsToApply = updatedLogs
-                withContext(Dispatchers.Main) {
-                    _isVpnActive.value = running
-                    if (logsToApply != null) {
-                        _logs.value = logsToApply
-                    }
-                }
-                delay(1000)
-            }
-        }
-    }
-
-    fun setVpnActive(active: Boolean) {
-        _isVpnActive.value = active
     }
 
     fun clearLogs() {
-        _logs.value = emptyList()
+        VpnRuntimeState.clearLogs()
+    }
+
+    fun resetSubscriptionImportState() {
+        if (!_subscriptionImportState.value.isRunning) {
+            _subscriptionImportState.value = SubscriptionImportState()
+        }
     }
 
     fun setEditingRule(key: String?) {
@@ -124,11 +77,9 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun refreshConfigList() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             val configs = repository.listConfigs()
-            withContext(Dispatchers.Main) {
-                _configList.value = configs
-            }
+            _configList.value = configs
         }
     }
 
@@ -179,18 +130,40 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         val trimmedName = name.trim()
         val trimmedUrl = url.trim()
         if (trimmedName.isEmpty() || trimmedUrl.isEmpty()) {
-            _subscriptionMessage.value = "名称和订阅链接都不能为空"
+            _subscriptionImportState.value = SubscriptionImportState(
+                stage = SubscriptionImportStage.Error,
+                title = "名称和订阅链接都不能为空"
+            )
             return
         }
         if (_subscriptions.value.any { it.url.equals(trimmedUrl, ignoreCase = true) }) {
-            _subscriptionMessage.value = "这个订阅链接已经添加过了"
+            _subscriptionImportState.value = SubscriptionImportState(
+                stage = SubscriptionImportStage.Error,
+                title = "这个订阅链接已经添加过了"
+            )
             return
         }
 
         viewModelScope.launch {
+            _subscriptionImportState.value = SubscriptionImportState(
+                stage = SubscriptionImportStage.Validating,
+                title = "正在校验订阅信息",
+                detail = trimmedName,
+                progress = 0.08f,
+                isRunning = true
+            )
             _subscriptionBusyId.value = NEW_SUBSCRIPTION_ID
             try {
-                val config = repository.downloadConfig(trimmedUrl)
+                val config = repository.downloadConfig(trimmedUrl) { status ->
+                    _subscriptionImportState.value = status.toImportState(trimmedName)
+                }
+                _subscriptionImportState.value = SubscriptionImportState(
+                    stage = SubscriptionImportStage.Saving,
+                    title = "正在保存配置",
+                    detail = trimmedName,
+                    progress = 0.94f,
+                    isRunning = true
+                )
                 val configName = repository.generateConfigName(trimmedName)
                 repository.saveConfig(configName, config)
 
@@ -207,9 +180,20 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
                 _subscriptions.value = updated
                 refreshConfigList()
                 updateSelectedConfigDisplayName()
+                _subscriptionImportState.value = SubscriptionImportState(
+                    stage = SubscriptionImportStage.Success,
+                    title = "导入完成",
+                    detail = trimmedName,
+                    progress = 1f,
+                    isRunning = false
+                )
                 _subscriptionMessage.value = "已导入订阅 $trimmedName"
             } catch (e: Exception) {
-                _subscriptionMessage.value = e.message ?: "导入订阅失败"
+                _subscriptionImportState.value = SubscriptionImportState(
+                    stage = SubscriptionImportStage.Error,
+                    title = e.message ?: "导入订阅失败",
+                    detail = trimmedName
+                )
             } finally {
                 _subscriptionBusyId.value = null
             }
@@ -304,4 +288,73 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
     companion object {
         const val NEW_SUBSCRIPTION_ID = "__new_subscription__"
     }
+}
+
+data class SubscriptionImportState(
+    val stage: SubscriptionImportStage = SubscriptionImportStage.Idle,
+    val title: String = "",
+    val detail: String? = null,
+    val progress: Float? = null,
+    val isRunning: Boolean = false
+)
+
+enum class SubscriptionImportStage {
+    Idle,
+    Validating,
+    Connecting,
+    Downloading,
+    Parsing,
+    Saving,
+    Success,
+    Error
+}
+
+private fun DownloadStatus.toImportState(name: String): SubscriptionImportState {
+    return when (phase) {
+        DownloadPhase.Connecting -> SubscriptionImportState(
+            stage = SubscriptionImportStage.Connecting,
+            title = "正在连接订阅服务器",
+            detail = name,
+            progress = 0.16f,
+            isRunning = true
+        )
+
+        DownloadPhase.Downloading -> {
+            val progressValue = totalBytes
+                ?.takeIf { it > 0L }
+                ?.let { total ->
+                    val ratio = downloadedBytes.toFloat() / total.toFloat()
+                    (0.18f + ratio.coerceIn(0f, 1f) * 0.62f).coerceIn(0f, 0.8f)
+                }
+            val detailText = totalBytes
+                ?.takeIf { it > 0L }
+                ?.let { total -> "已下载 ${formatBytes(downloadedBytes)} / ${formatBytes(total)}" }
+                ?: "已下载 ${formatBytes(downloadedBytes)}"
+            SubscriptionImportState(
+                stage = SubscriptionImportStage.Downloading,
+                title = "正在下载配置",
+                detail = detailText,
+                progress = progressValue,
+                isRunning = true
+            )
+        }
+
+        DownloadPhase.Parsing -> SubscriptionImportState(
+            stage = SubscriptionImportStage.Parsing,
+            title = "正在解析配置",
+            detail = "已接收 ${formatBytes(downloadedBytes)}",
+            progress = 0.88f,
+            isRunning = true
+        )
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024L) {
+        return "${bytes} B"
+    }
+    if (bytes < 1024L * 1024L) {
+        return String.format("%.1f KB", bytes / 1024f)
+    }
+    return String.format("%.2f MB", bytes / (1024f * 1024f))
 }

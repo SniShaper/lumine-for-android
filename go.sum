@@ -70,6 +70,7 @@ golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb h1:whnFRlWMcXI9d+Z
 golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb/go.mod h1:rpwXGsirqLqN2L0JDJQlwOboGHmptD5ZD6T2VmcqhTw=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+gvisor.dev/gvisor v0.0.0-20250523182742-eede7a881b20 h1:0DxLu8hxI1OGp1qVRPqNd+2k1a7hMNUNqbZG0IrtKlM=
 gvisor.dev/gvisor v0.0.0-20250523182742-eede7a881b20/go.mod h1:3r5CMtNQMKIvBlrmM9xWUNamjKBYPOWyXOjmg5Kts3g=
 gvisor.dev/gvisor v0.0.0-20260403210621-0f29b0e1e7fa h1:Z4saHULc6jY4qdrpzLGY/7mOxsQ5Gx0pnHh8HWIyMWE=
 gvisor.dev/gvisor v0.0.0-20260403210621-0f29b0e1e7fa/go.mod h1:xQ2PWgHmWJA/Ph4i1q1jBm39BKhc3W0DXqWoDSyuBOY=

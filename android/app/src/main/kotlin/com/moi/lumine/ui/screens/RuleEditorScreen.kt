@@ -20,6 +20,12 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
     val key by viewModel.editingRuleKey.collectAsState()
     val ruleKey = key
 
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.setEditingRule(null)
+        }
+    }
+
     if (ruleKey == null) {
         LaunchedEffect(Unit) {
             navController.popBackStack()
@@ -51,7 +57,6 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        viewModel.setEditingRule(null)
                         navController.popBackStack()
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -72,7 +77,6 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                         }
                         viewModel.updateConfig(updatedConfig)
                         viewModel.saveConfig()
-                        viewModel.setEditingRule(null)
                         navController.popBackStack()
                     }) {
                         Icon(Icons.Default.Save, contentDescription = "Save")

@@ -22,8 +22,6 @@ var (
 	udpDialID uint32
 )
 
-const quicPort = 443
-
 func (p *LumineProxy) Addr() string {
 	return "lumine"
 }
@@ -119,11 +117,6 @@ func (pc *luminePacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 	if lumine.IsVPNDNSAddress(dstIP.String(), udpAddr.Port) {
 		return pc.handleDNSQuery(b, udpAddr)
-	}
-
-	if udpAddr.Port == quicPort {
-		pc.logger.Info("Dropping UDP/443 to force TCP fallback:", addr.String())
-		return len(b), nil
 	}
 
 	originHost := dstIP.String()

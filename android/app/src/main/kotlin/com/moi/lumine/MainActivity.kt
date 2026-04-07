@@ -3,6 +3,7 @@ package com.moi.lumine
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -55,6 +57,16 @@ fun MainContainer() {
     val context = LocalContext.current
     val navController = rememberNavController()
     val viewModel: ConfigViewModel = viewModel()
+    val vpnStatus by viewModel.vpnStatus.collectAsState()
+    var toggleLocked by rememberSaveable { mutableStateOf(false) }
+    var lastToggleAt by rememberSaveable { mutableLongStateOf(0L) }
+
+    LaunchedEffect(vpnStatus.phase) {
+        if (vpnStatus.phase != "authorizing" && vpnStatus.phase != "starting" && vpnStatus.phase != "stopping") {
+            kotlinx.coroutines.delay(650)
+            toggleLocked = false
+        }
+    }
     
     val vpnRequestLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -67,10 +79,17 @@ fun MainContainer() {
             ContextCompat.startForegroundService(context, intent)
         } else {
             VpnRuntimeState.setStatus("idle", "VPN 权限未授予")
+            toggleLocked = false
         }
     }
 
     fun startVpn() {
+        val now = SystemClock.elapsedRealtime()
+        if (toggleLocked || now - lastToggleAt < 650L) {
+            return
+        }
+        toggleLocked = true
+        lastToggleAt = now
         val vpnIntent = VpnService.prepare(context)
         if (vpnIntent != null) {
             VpnRuntimeState.setStatus("authorizing", "等待 VPN 权限授权")
@@ -85,11 +104,22 @@ fun MainContainer() {
     }
 
     fun stopVpn() {
+        val now = SystemClock.elapsedRealtime()
+        if (toggleLocked || now - lastToggleAt < 650L) {
+            return
+        }
+        toggleLocked = true
+        lastToggleAt = now
+        VpnRuntimeState.setStatus("stopping", "正在停止代理")
         val intent = Intent(context, LumineVpnService::class.java).apply {
             action = "STOP"
         }
-        context.startService(intent)
-        viewModel.setVpnActive(false)
+        runCatching {
+            context.startService(intent)
+        }.onFailure {
+            VpnRuntimeState.setStatus("error", "停止服务失败")
+            toggleLocked = false
+        }
     }
 
     Scaffold { innerPadding ->

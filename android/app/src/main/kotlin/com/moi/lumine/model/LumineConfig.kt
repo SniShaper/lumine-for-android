@@ -8,7 +8,7 @@ data class LumineConfig(
     @Json(name = "log_level") val logLevel: String = "INFO",
     @Json(name = "socks5_address") val socks5Address: String = "127.0.0.1:1080",
     @Json(name = "http_address") val httpAddress: String = "127.0.0.1:1225",
-    @Json(name = "dns_addr") val dnsAddr: String = "https://987.cloudflare-gateway.com/dns-query",
+    @Json(name = "dns_addr") val dnsAddr: String = "https://xwfpeb16ii.cloudflare-gateway.com/dns-query",
     @Json(name = "socks5_for_doh") val socks5ForDoh: String = "",
     @Json(name = "udp_minsize") val udpMinSize: Int = 4096,
     @Json(name = "dns_singleflight") val dnsSingleFlight: Boolean = false,

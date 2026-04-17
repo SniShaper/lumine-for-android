@@ -2,7 +2,7 @@
   "log_level": "INFO",
   "socks5_address": "127.0.0.1:1080",
   "http_address": "127.0.0.1:1225",
-  "dns_addr": "https://987.cloudflare-gateway.com/dns-query",
+  "dns_addr": "https://xwfpeb16ii.cloudflare-gateway.com/dns-query",
   "socks5_for_doh": "",
   "udp_minsize": 4096,
   "dns_singleflight": false,
@@ -53,14 +53,18 @@
       "mode": "tls-rf",
       "num_records": 1,
       "num_segs": 3
+    },
+    "173.245.48.0/20;103.21.244.0/22;103.22.200.0/22;103.31.4.0/22;141.101.64.0/18;108.162.192.0/18;190.93.240.0/20;188.114.96.0/20;197.234.240.0/22;198.41.128.0/17;162.158.0.0/15;104.16.0.0/13;104.24.0.0/14;172.64.0.0/13;131.0.72.0/22": {
+      "mode": "tls-rf",
+      "map_to": "cdn.rpnet.cc"
     }
   },
   "domain_policies": {
-    "*(threads|cdninstagram|instagram).com": {
-      "host": "57.144.74.192"
+    "xwfpeb16ii.cloudflare-gateway.com": {
+      "host": "cdn.rpnet.cc"
     },
-    "*cloudflare(|-gateway|-dns).com;one.one.one.one;*(workers|pages).dev": {
-      "host": "104.21.3.221"
+    "facebook.com;*.facebook.com;fb.com;*.fb.com;fbcdn.net;*.fbcdn.net;fbsbx.com;*.fbsbx.com;facebook.net;*.facebook.net;instagram.com;*.instagram.com;cdninstagram.com;*.cdninstagram.com;threads.net;*.threads.net;messenger.com;*.messenger.com;m.me;*.m.me;meta.com;*.meta.com;meta.ai;*.meta.ai;oculus.com;*.oculus.com;whatsapp.com;*.whatsapp.com;whatsapp.net;*.whatsapp.net;whatsapp-cdn.net;*.whatsapp-cdn.net;tfbnw.net;*.tfbnw.net": {
+      "mode": "tls-rf"
     },
     "*(wikimedia|wikipedia|wiktionary|wikiversity|wikivoyage|wikisource|wikinews|wikidata|mediawiki|wikifunctions|wikibooks|wikiquote).org": {
       "host": "185.15.58.224"
@@ -116,8 +120,9 @@
     "platform.twitter.com": {
       "host": "146.75.120.157"
     },
-    "*x.com;(video|abs|pbs).twimg.com": {
-      "host": "172.64.229.211"
+    "(video|abs|pbs).twimg.com": {
+      "host": "172.64.229.211",
+      "mode": "tls-rf"
     },
     "abs-0.twimg.com": {
       "host": "146.75.48.159"

@@ -68,11 +68,11 @@ func PlanRequest(req RequestContext, logger *log.Logger) (DialPlan, error) {
 		recoveredDomain, _ = defaultResolver.LookupDomain(req.Host)
 		if recoveredDomain != "" {
 			if logger != nil {
-				logger.Debug("Recovered fake-ip:", req.Host, "->", recoveredDomain)
+				logger.Info("Plan fake-ip recover:", req.Host, "->", recoveredDomain)
 			}
 			planningHost = recoveredDomain
 		} else if logger != nil && isFakeIPAddress(req.Host) {
-			logger.Debug("Fake-IP mapping miss:", req.Host)
+			logger.Info("Plan fake-ip miss:", req.Host)
 		}
 	}
 
@@ -87,7 +87,7 @@ func PlanRequest(req RequestContext, logger *log.Logger) (DialPlan, error) {
 		targetPort = policy.Port
 	}
 
-	return DialPlan{
+	plan := DialPlan{
 		Source:          req.Source,
 		OriginHost:      req.Host,
 		OriginPort:      req.Port,
@@ -98,7 +98,18 @@ func PlanRequest(req RequestContext, logger *log.Logger) (DialPlan, error) {
 		TargetPort:      targetPort,
 		Policy:          policy,
 		Blocked:         blocked,
-	}, nil
+	}
+	if logger != nil && recoveredDomain != "" {
+		logger.Info(
+			"Plan target:",
+			"domain="+recoveredDomain,
+			"target="+plan.TargetAddress(),
+			"mode="+plan.Policy.Mode.String(),
+			"matched_domain="+boolToText(plan.MatchedDomain),
+			"matched_ip="+boolToText(plan.MatchedIP),
+		)
+	}
+	return plan, nil
 }
 
 func PlanAddress(originHost string, logger *log.Logger) (DialPlan, error) {

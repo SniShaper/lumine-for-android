@@ -2,6 +2,8 @@
 
 package com.moi.lumine.ui.screens
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -15,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
@@ -35,12 +38,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,32 +55,80 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.moi.lumine.RuntimeLogEntry
+import com.moi.lumine.RuntimeLogLevel
 import com.moi.lumine.ui.ConfigViewModel
+
+private const val LOG_LIST_HEADER_COUNT = 2
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun LogScreen(navController: NavController, viewModel: ConfigViewModel) {
-    val logs by viewModel.logs.collectAsState()
+    val context = LocalContext.current
+    val logSnapshot by viewModel.logSnapshot.collectAsState()
+    val isLogCaptureEnabled by viewModel.isLogCaptureEnabled.collectAsState()
     val vpnStatus by viewModel.vpnStatus.collectAsState()
+    val exportEvent by viewModel.logExportEvent.collectAsState()
+    val exportMessage by viewModel.logExportMessage.collectAsState()
+    val isExportingLogs by viewModel.isExportingLogs.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     var isAutoScrollEnabled by remember { mutableStateOf(true) }
     var selectedLevel by remember { mutableStateOf(LogLevelFilter.All) }
-    val parsedLogs = remember(logs) { logs.map(::toLogEntry) }
-    val filteredLogs = remember(parsedLogs, selectedLevel) {
-        if (selectedLevel == LogLevelFilter.All) parsedLogs
-        else parsedLogs.filter { it.level == selectedLevel }
+    val allLogs = logSnapshot.entries
+    val filteredLogs = remember(allLogs, selectedLevel) {
+        if (selectedLevel == LogLevelFilter.All) {
+            allLogs
+        } else {
+            allLogs.filter { selectedLevel.matches(it.level) }
+        }
     }
-    val errorCount = remember(parsedLogs) { parsedLogs.count { it.level == LogLevelFilter.Error } }
-    val infoCount = remember(parsedLogs) { parsedLogs.count { it.level == LogLevelFilter.Info } }
-    val debugCount = remember(parsedLogs) { parsedLogs.count { it.level == LogLevelFilter.Debug } }
+    val shouldFollowTail by remember(listState, filteredLogs, isAutoScrollEnabled) {
+        derivedStateOf {
+            if (!isAutoScrollEnabled || filteredLogs.isEmpty()) {
+                false
+            } else {
+                val targetIndex = filteredLogs.lastIndex + LOG_LIST_HEADER_COUNT
+                val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                listState.layoutInfo.totalItemsCount == 0 ||
+                    targetIndex - lastVisibleIndex <= 3 ||
+                    !listState.canScrollForward
+            }
+        }
+    }
 
-    if (isAutoScrollEnabled && filteredLogs.isNotEmpty()) {
-        LaunchedEffect(filteredLogs.size, isAutoScrollEnabled, selectedLevel) {
-            listState.animateScrollToItem(filteredLogs.lastIndex)
+    LaunchedEffect(filteredLogs.lastOrNull()?.id, selectedLevel, isAutoScrollEnabled) {
+        if (shouldFollowTail && filteredLogs.isNotEmpty()) {
+            listState.scrollToItem(filteredLogs.lastIndex + LOG_LIST_HEADER_COUNT)
+        }
+    }
+
+    LaunchedEffect(exportMessage) {
+        val current = exportMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(current)
+        viewModel.consumeLogExportMessage()
+    }
+
+    LaunchedEffect(exportEvent) {
+        val payload = exportEvent ?: return@LaunchedEffect
+        try {
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, payload.uri)
+                putExtra(Intent.EXTRA_SUBJECT, "Lumine 日志 ${payload.fileName}")
+                putExtra(Intent.EXTRA_TEXT, "Lumine 导出日志: ${payload.fileName}")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "导出日志"))
+        } catch (_: ActivityNotFoundException) {
+            viewModel.reportLogExportMessage("没有可用的分享应用")
+        } finally {
+            viewModel.consumeLogExportEvent()
         }
     }
 
@@ -88,18 +142,43 @@ fun LogScreen(navController: NavController, viewModel: ConfigViewModel) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleLogCapture() }) {
+                        Icon(
+                            Icons.Default.BugReport,
+                            contentDescription = if (isLogCaptureEnabled) "停止捕捉日志" else "开始捕捉日志",
+                            tint = if (isLogCaptureEnabled) {
+                                Color(0xFFB3261E)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
                     IconButton(onClick = { isAutoScrollEnabled = !isAutoScrollEnabled }) {
                         Icon(
                             if (isAutoScrollEnabled) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = "Toggle Auto-scroll"
                         )
                     }
+                    IconButton(
+                        onClick = { viewModel.exportLogs() },
+                        enabled = !isExportingLogs
+                    ) {
+                        if (isExportingLogs) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Share, contentDescription = "Export Logs")
+                        }
+                    }
                     IconButton(onClick = { viewModel.clearLogs() }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = "Clear Logs")
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         LazyColumn(
             state = listState,
@@ -112,10 +191,13 @@ fun LogScreen(navController: NavController, viewModel: ConfigViewModel) {
             item {
                 LogSummaryCard(
                     statusMessage = vpnStatus.message,
-                    totalCount = parsedLogs.size,
-                    infoCount = infoCount,
-                    errorCount = errorCount,
-                    debugCount = debugCount
+                    isLogCaptureEnabled = isLogCaptureEnabled,
+                    totalCount = logSnapshot.totalCount,
+                    infoCount = logSnapshot.infoCount,
+                    errorCount = logSnapshot.errorCount,
+                    debugCount = logSnapshot.debugCount,
+                    onToggleCapture = { viewModel.toggleLogCapture() },
+                    onExport = { viewModel.exportLogs() }
                 )
             }
 
@@ -129,12 +211,12 @@ fun LogScreen(navController: NavController, viewModel: ConfigViewModel) {
             if (filteredLogs.isEmpty()) {
                 item {
                     EmptyLogState(
-                        hasAnyLogs = parsedLogs.isNotEmpty(),
+                        hasAnyLogs = allLogs.isNotEmpty(),
                         isRunning = vpnStatus.phase == "running" || vpnStatus.phase == "starting"
                     )
                 }
             } else {
-                itemsIndexed(filteredLogs, key = { index, item -> "${item.raw}-$index" }) { _, log ->
+                items(filteredLogs, key = { it.id }) { log ->
                     LogItem(log)
                 }
             }
@@ -145,10 +227,13 @@ fun LogScreen(navController: NavController, viewModel: ConfigViewModel) {
 @Composable
 private fun LogSummaryCard(
     statusMessage: String,
+    isLogCaptureEnabled: Boolean,
     totalCount: Int,
     infoCount: Int,
     errorCount: Int,
-    debugCount: Int
+    debugCount: Int,
+    onToggleCapture: () -> Unit,
+    onExport: () -> Unit
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -168,6 +253,31 @@ private fun LogSummaryCard(
                 text = statusMessage,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            AssistChip(
+                onClick = onToggleCapture,
+                label = { Text(if (isLogCaptureEnabled) "日志捕捉中" else "日志捕捉未开启") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.BugReport,
+                        contentDescription = null,
+                        tint = if (isLogCaptureEnabled) {
+                            Color(0xFFB3261E)
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+            )
+            AssistChip(
+                onClick = onExport,
+                label = { Text("导出当前日志") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null
+                    )
+                }
             )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -237,7 +347,7 @@ private fun EmptyLogState(hasAnyLogs: Boolean, isRunning: Boolean) {
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = if (hasAnyLogs) "切换日志级别后再看一次。" else "启动后这里会展示代理核心的真实运行信息。",
+                text = if (hasAnyLogs) "切换日志级别后再看一次。" else "点击右上角的捕捉按钮后，这里才会开始收集核心日志。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -246,9 +356,10 @@ private fun EmptyLogState(hasAnyLogs: Boolean, isRunning: Boolean) {
 }
 
 @Composable
-private fun LogItem(log: LogEntry) {
+private fun LogItem(log: RuntimeLogEntry) {
+    val visuals = remember(log.level) { log.level.visuals() }
     Card(
-        colors = CardDefaults.cardColors(containerColor = log.background)
+        colors = CardDefaults.cardColors(containerColor = visuals.background)
     ) {
         Row(
             modifier = Modifier
@@ -257,9 +368,9 @@ private fun LogItem(log: LogEntry) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
-                imageVector = log.icon,
+                imageVector = visuals.icon,
                 contentDescription = null,
-                tint = log.accent,
+                tint = visuals.accent,
                 modifier = Modifier.padding(top = 2.dp)
             )
             Column(
@@ -271,24 +382,26 @@ private fun LogItem(log: LogEntry) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = log.level.label,
+                        text = log.level.label(),
                         style = MaterialTheme.typography.labelMedium,
-                        color = log.accent,
+                        color = visuals.accent,
                         fontWeight = FontWeight.Bold
                     )
                     if (log.tag != null) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        AssistChip(
-                            onClick = {},
-                            enabled = false,
-                            label = {
-                                Text(
-                                    text = log.tag,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        )
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(
+                                text = log.tag,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 Text(
@@ -313,51 +426,39 @@ private enum class LogLevelFilter(val label: String) {
     Info("信息"),
     Error("错误"),
     Debug("调试"),
-    Other("其他")
+    Other("其他");
+
+    fun matches(level: RuntimeLogLevel): Boolean {
+        return when (this) {
+            All -> true
+            Info -> level == RuntimeLogLevel.Info
+            Error -> level == RuntimeLogLevel.Error
+            Debug -> level == RuntimeLogLevel.Debug
+            Other -> level == RuntimeLogLevel.Other
+        }
+    }
 }
 
-private data class LogEntry(
-    val raw: String,
-    val timestamp: String?,
-    val tag: String?,
-    val level: LogLevelFilter,
-    val message: String,
+private data class LogVisuals(
     val icon: ImageVector,
     val accent: Color,
     val background: Color
 )
 
-private fun toLogEntry(raw: String): LogEntry {
-    val timestampMatch = Regex("""^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} """).find(raw)
-    val timestamp = timestampMatch?.value?.trim()
-    val withoutTime = if (timestamp != null) raw.removePrefix(timestampMatch.value).trim() else raw.trim()
-
-    val tagMatch = Regex("""^\[[^\]]+\]""").find(withoutTime)
-    val tag = tagMatch?.value
-    val remainder = if (tag != null) withoutTime.removePrefix(tag).trim() else withoutTime
-
-    val level = when {
-        remainder.contains("ERROR", ignoreCase = true) || remainder.contains("failed", ignoreCase = true) -> LogLevelFilter.Error
-        remainder.contains("DEBUG", ignoreCase = true) || remainder.contains("closed", ignoreCase = true) -> LogLevelFilter.Debug
-        remainder.contains("INFO", ignoreCase = true) || remainder.contains("started", ignoreCase = true) || remainder.contains("CONNECT") -> LogLevelFilter.Info
-        else -> LogLevelFilter.Other
+private fun RuntimeLogLevel.label(): String {
+    return when (this) {
+        RuntimeLogLevel.Info -> LogLevelFilter.Info.label
+        RuntimeLogLevel.Error -> LogLevelFilter.Error.label
+        RuntimeLogLevel.Debug -> LogLevelFilter.Debug.label
+        RuntimeLogLevel.Other -> LogLevelFilter.Other.label
     }
+}
 
-    val (icon, accent, background) = when (level) {
-        LogLevelFilter.Error -> Triple(Icons.Default.Warning, Color(0xFFB3261E), Color(0xFFFFF1F1))
-        LogLevelFilter.Debug -> Triple(Icons.Default.BugReport, Color(0xFF5D6B82), Color(0xFFF3F5F8))
-        LogLevelFilter.Info -> Triple(Icons.Default.Info, Color(0xFF17663A), Color(0xFFF1FAF4))
-        LogLevelFilter.All, LogLevelFilter.Other -> Triple(Icons.Default.Info, Color(0xFF355070), Color(0xFFF7F7FA))
+private fun RuntimeLogLevel.visuals(): LogVisuals {
+    return when (this) {
+        RuntimeLogLevel.Error -> LogVisuals(Icons.Default.Warning, Color(0xFFB3261E), Color(0xFFFFF1F1))
+        RuntimeLogLevel.Debug -> LogVisuals(Icons.Default.BugReport, Color(0xFF5D6B82), Color(0xFFF3F5F8))
+        RuntimeLogLevel.Info -> LogVisuals(Icons.Default.Info, Color(0xFF17663A), Color(0xFFF1FAF4))
+        RuntimeLogLevel.Other -> LogVisuals(Icons.Default.Info, Color(0xFF355070), Color(0xFFF7F7FA))
     }
-
-    return LogEntry(
-        raw = raw,
-        timestamp = timestamp,
-        tag = tag,
-        level = level,
-        message = remainder,
-        icon = icon,
-        accent = accent,
-        background = background
-    )
 }

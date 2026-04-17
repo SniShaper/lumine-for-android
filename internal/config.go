@@ -44,14 +44,17 @@ type Config struct {
 }
 
 var (
-	logLevel      = log.INFO
-	defaultPolicy Policy
-	IPPools       map[string]*IPPool
-	sem           chan struct{}
-	dnsAddr       string
-	domainMatcher *addrtrie.DomainMatcher[*Policy]
-	ipMatcher     *addrtrie.IPv4Trie[*Policy]
-	ipv6Matcher   *addrtrie.IPv6Trie[*Policy]
+	logLevel          = log.INFO
+	defaultPolicy     Policy
+	IPPools           map[string]*IPPool
+	sem               chan struct{}
+	dnsAddr           string
+	domainMatcher     *addrtrie.DomainMatcher[*Policy]
+	ipMatcher         *addrtrie.IPv4Trie[*Policy]
+	ipv6Matcher       *addrtrie.IPv6Trie[*Policy]
+	bootstrapLookupIP = func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		return net.DefaultResolver.LookupIPAddr(ctx, host)
+	}
 )
 
 const defaultDNSTimeout = 10 * time.Second
@@ -143,32 +146,13 @@ func LoadConfig(filePath string) (string, string, error) {
 		}
 	}
 
-	domainMatcher = addrtrie.NewDomainMatcher[*Policy]()
-	for patterns, policy := range conf.DomainPolicies {
-		for elem := range strings.SplitSeq(patterns, ";") {
-			for _, pattern := range expandPattern(elem) {
-				domainMatcher.Add(pattern, &policy)
-			}
-		}
-	}
+	domainMatcher = buildDomainMatcher(conf.DomainPolicies)
 
 	if err := loadBuiltinGFWList(); err != nil {
 		return "", "", wrap("load builtin gfwlist", err)
 	}
 
-	ipMatcher = addrtrie.NewIPv4Trie[*Policy]()
-	ipv6Matcher = addrtrie.NewIPv6Trie[*Policy]()
-	for patterns, policy := range conf.IpPolicies {
-		for elem := range strings.SplitSeq(patterns, ";") {
-			for _, ipOrNet := range expandPattern(elem) {
-				if isIPv6(ipOrNet) {
-					ipv6Matcher.Insert(ipOrNet, &policy)
-				} else {
-					ipMatcher.Insert(ipOrNet, &policy)
-				}
-			}
-		}
-	}
+	ipMatcher, ipv6Matcher = buildIPMatchers(conf.IpPolicies)
 
 	dnsAddr = conf.DNSAddr
 	if strings.HasPrefix(dnsAddr, "https://") {
@@ -214,6 +198,37 @@ func getIPPolicy(ip string) (*Policy, bool) {
 		return ipv6Matcher.Find(ip)
 	}
 	return ipMatcher.Find(ip)
+}
+
+func buildDomainMatcher(policies map[string]Policy) *addrtrie.DomainMatcher[*Policy] {
+	matcher := addrtrie.NewDomainMatcher[*Policy]()
+	for patterns, policy := range policies {
+		policyCopy := policy
+		for elem := range strings.SplitSeq(patterns, ";") {
+			for _, pattern := range expandPattern(elem) {
+				matcher.Add(pattern, &policyCopy)
+			}
+		}
+	}
+	return matcher
+}
+
+func buildIPMatchers(policies map[string]Policy) (*addrtrie.IPv4Trie[*Policy], *addrtrie.IPv6Trie[*Policy]) {
+	ipv4 := addrtrie.NewIPv4Trie[*Policy]()
+	ipv6 := addrtrie.NewIPv6Trie[*Policy]()
+	for patterns, policy := range policies {
+		policyCopy := policy
+		for elem := range strings.SplitSeq(patterns, ";") {
+			for _, ipOrNet := range expandPattern(elem) {
+				if isIPv6(ipOrNet) {
+					ipv6.Insert(ipOrNet, &policyCopy)
+				} else {
+					ipv4.Insert(ipOrNet, &policyCopy)
+				}
+			}
+		}
+	}
+	return ipv4, ipv6
 }
 
 var dohConnPolicy *Policy
@@ -320,6 +335,12 @@ func genDialContext() (func(ctx context.Context, network, address string) (net.C
 					return nil, err
 				}
 			}
+			if !disableRedirect && net.ParseIP(host) == nil {
+				host, err = resolveBootstrapHost(host)
+				if err != nil {
+					return nil, err
+				}
+			}
 			if !disableRedirect {
 				var ipPolicy *Policy
 				host, ipPolicy, err = ipRedirect(nil, host)
@@ -358,4 +379,51 @@ func genDialContext() (func(ctx context.Context, network, address string) (net.C
 
 func hashStringXXHASH(s string) uint32 {
 	return uint32(xxhash.Sum64String(s))
+}
+
+func resolveBootstrapHost(host string) (string, error) {
+	if host == "" || net.ParseIP(host) != nil {
+		return host, nil
+	}
+
+	if dnsCache != nil {
+		if ip, ok := dnsCache.Get(host); ok {
+			return ip, nil
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDNSTimeout)
+	defer cancel()
+
+	addrs, err := bootstrapLookupIP(ctx, host)
+	if err != nil {
+		return "", wrap("bootstrap resolve "+host, err)
+	}
+	ip := pickBootstrapIP(addrs)
+	if ip == "" {
+		return "", errors.New("bootstrap resolve " + host + ": no address found")
+	}
+
+	if dnsCache != nil {
+		dnsCache.AddWithLifetime(host, ip, dnsCacheTTL)
+	}
+	rememberDomainIPMapping(host, ip)
+	return ip, nil
+}
+
+func pickBootstrapIP(addrs []net.IPAddr) string {
+	var first string
+	for _, addr := range addrs {
+		ip := addr.IP
+		if ip == nil {
+			continue
+		}
+		if first == "" {
+			first = ip.String()
+		}
+		if v4 := ip.To4(); v4 != nil {
+			return v4.String()
+		}
+	}
+	return first
 }

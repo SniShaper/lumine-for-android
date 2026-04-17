@@ -217,6 +217,25 @@ func TestHandleDNSQueryFakeAAAAResponse(t *testing.T) {
 	}
 }
 
+func TestShouldUseFakeIPDoesNotEnablePlainDomainsWithoutRules(t *testing.T) {
+	origDomainMatcher := domainMatcher
+	origGFWMatcher := gfwDomainMatcher
+	origGFWBypass := gfwBypassMatcher
+	t.Cleanup(func() {
+		domainMatcher = origDomainMatcher
+		gfwDomainMatcher = origGFWMatcher
+		gfwBypassMatcher = origGFWBypass
+	})
+
+	domainMatcher = addrtrie.NewDomainMatcher[*Policy]()
+	gfwDomainMatcher = addrtrie.NewDomainMatcher[struct{}]()
+	gfwBypassMatcher = addrtrie.NewDomainMatcher[struct{}]()
+
+	if shouldUseFakeIP("plain.example") {
+		t.Fatal("plain domain should not require fake-ip before upstream response inspection")
+	}
+}
+
 func TestHandleDNSQueryPassesThroughWhenDomainPolicyDoesNotRequireFakeIP(t *testing.T) {
 	origExchange := dnsExchange
 	origDomainMatcher := domainMatcher

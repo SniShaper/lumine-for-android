@@ -1,6 +1,9 @@
 package com.moi.lumine.repository
 
 import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
+import com.moi.lumine.VpnStatus
 import com.moi.lumine.model.LumineConfig
 import com.moi.lumine.model.SubscriptionProfile
 import com.squareup.moshi.Moshi
@@ -12,6 +15,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ConfigRepository(private val context: Context) {
 
@@ -80,6 +86,24 @@ class ConfigRepository(private val context: Context) {
 
     fun setSelectedConfigName(name: String) {
         prefs.edit().putString(KEY_SELECTED_CONFIG, name).apply()
+    }
+
+    fun shouldVpnBeRunning(): Boolean {
+        return prefs.getBoolean(KEY_VPN_SHOULD_RUN, false)
+    }
+
+    fun setVpnShouldRun(shouldRun: Boolean, configName: String? = null) {
+        prefs.edit().apply {
+            putBoolean(KEY_VPN_SHOULD_RUN, shouldRun)
+            if (!configName.isNullOrBlank()) {
+                putString(KEY_LAST_RUNNING_CONFIG, configName)
+            }
+        }.apply()
+    }
+
+    fun getLastRunningConfigName(): String {
+        return prefs.getString(KEY_LAST_RUNNING_CONFIG, getSelectedConfigName())
+            ?: getSelectedConfigName()
     }
 
     suspend fun loadSubscriptions(): List<SubscriptionProfile> = withContext(Dispatchers.IO) {
@@ -182,12 +206,61 @@ class ConfigRepository(private val context: Context) {
         }
     }
 
+    suspend fun exportLogs(
+        logs: List<String>,
+        status: VpnStatus,
+        selectedConfigName: String
+    ): ExportedLogFile = withContext(Dispatchers.IO) {
+        val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+        exportDir.listFiles()
+            ?.sortedByDescending { it.lastModified() }
+            ?.drop(9)
+            ?.forEach { it.delete() }
+
+        val now = Date()
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(now)
+        val exportedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(now)
+        val fileName = "lumine-log-$stamp.txt"
+        val file = File(exportDir, fileName)
+
+        val body = buildString {
+            appendLine("Lumine Log Export")
+            appendLine("Exported-At: $exportedAt")
+            appendLine("Selected-Config: $selectedConfigName")
+            appendLine("VPN-Phase: ${status.phase}")
+            appendLine("VPN-Message: ${status.message}")
+            appendLine("Log-Lines: ${logs.size}")
+            appendLine()
+            if (logs.isEmpty()) {
+                appendLine("[no logs captured]")
+            } else {
+                logs.forEach { appendLine(it) }
+            }
+        }
+
+        file.writeText(body)
+
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        ExportedLogFile(uri = uri, fileName = fileName)
+    }
+
     companion object {
         private const val PREFS_NAME = "lumine_prefs"
         private const val KEY_SELECTED_CONFIG = "selected_config_name"
         private const val KEY_SUBSCRIPTIONS = "subscriptions_json"
+        private const val KEY_VPN_SHOULD_RUN = "vpn_should_run"
+        private const val KEY_LAST_RUNNING_CONFIG = "last_running_config_name"
     }
 }
+
+data class ExportedLogFile(
+    val uri: Uri,
+    val fileName: String
+)
 
 data class DownloadStatus(
     val phase: DownloadPhase,

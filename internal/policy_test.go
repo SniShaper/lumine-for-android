@@ -1,6 +1,7 @@
 package lumine
 
 import (
+	"context"
 	"net"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 )
 
 func TestGenPolicyWithOptions_HostSelfResolvesAndMergesFinalIPPolicy(t *testing.T) {
+	resetRecordedDNSCache(t)
 	origDefault := defaultPolicy
 	origDomainMatcher := domainMatcher
 	origIPMatcher := ipMatcher
@@ -53,6 +55,7 @@ func TestGenPolicyWithOptions_HostSelfResolvesAndMergesFinalIPPolicy(t *testing.
 }
 
 func TestGenPolicyWithOptions_LiteralHostStillRunsFinalIPPolicy(t *testing.T) {
+	resetRecordedDNSCache(t)
 	origDefault := defaultPolicy
 	origDomainMatcher := domainMatcher
 	origIPMatcher := ipMatcher
@@ -86,6 +89,7 @@ func TestGenPolicyWithOptions_LiteralHostStillRunsFinalIPPolicy(t *testing.T) {
 }
 
 func TestGenPolicyWithOptions_DisableRedirectKeepsExplicitDomainTarget(t *testing.T) {
+	resetRecordedDNSCache(t)
 	origDefault := defaultPolicy
 	origDomainMatcher := domainMatcher
 	origIPMatcher := ipMatcher
@@ -128,6 +132,7 @@ func TestGenPolicyWithOptions_DisableRedirectKeepsExplicitDomainTarget(t *testin
 }
 
 func TestPlanRequest_UsesRecoveredFakeDomainBeforeRouting(t *testing.T) {
+	resetRecordedDNSCache(t)
 	origDefault := defaultPolicy
 	origDomainMatcher := domainMatcher
 	origGFWMatcher := gfwDomainMatcher
@@ -186,7 +191,148 @@ func TestPlanRequest_UsesRecoveredFakeDomainBeforeRouting(t *testing.T) {
 	}
 }
 
+func TestPlanRequest_UsesRecordedDNSAnswerBeforeResolverLookup(t *testing.T) {
+	resetRecordedDNSCache(t)
+	origDefault := defaultPolicy
+	origDomainMatcher := domainMatcher
+	origGFWMatcher := gfwDomainMatcher
+	origGFWBypass := gfwBypassMatcher
+	origIPMatcher := ipMatcher
+	origIPv6Matcher := ipv6Matcher
+	origResolver := defaultResolver
+	origV4 := defaultFakeIPv4Store
+	origV6 := defaultFakeIPv6Store
+	origRecorded := recordedDNSIPs
+	t.Cleanup(func() {
+		defaultPolicy = origDefault
+		domainMatcher = origDomainMatcher
+		gfwDomainMatcher = origGFWMatcher
+		gfwBypassMatcher = origGFWBypass
+		ipMatcher = origIPMatcher
+		ipv6Matcher = origIPv6Matcher
+		defaultResolver = origResolver
+		defaultFakeIPv4Store = origV4
+		defaultFakeIPv6Store = origV6
+		recordedDNSMu.Lock()
+		recordedDNSIPs = origRecorded
+		recordedDNSMu.Unlock()
+	})
+
+	defaultPolicy = Policy{Mode: ModeTLSRF}
+	domainMatcher = addrtrie.NewDomainMatcher[*Policy]()
+	ipMatcher = addrtrie.NewIPv4Trie[*Policy]()
+	ipv6Matcher = addrtrie.NewIPv6Trie[*Policy]()
+	defaultFakeIPv4Store = mustNewFakeIPStore(fakeIPv4CIDR)
+	defaultFakeIPv6Store = mustNewFakeIPStore(fakeIPv6CIDR)
+	gfwDomainMatcher = addrtrie.NewDomainMatcher[struct{}]()
+	gfwBypassMatcher = addrtrie.NewDomainMatcher[struct{}]()
+	domainMatcher.Add("example.com", &Policy{})
+	recordedDNSMu.Lock()
+	recordedDNSIPs = make(map[string]recordedDNSResult)
+	recordedDNSMu.Unlock()
+
+	rememberRecordedDNSAnswers("example.com", []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{
+				Name:   "example.com.",
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    120,
+			},
+			A: net.ParseIP("203.0.113.10").To4(),
+		},
+	})
+
+	defaultResolver = stubResolver{
+		resolve: func(domain string, dnsMode DNSMode) (string, bool, error) {
+			t.Fatalf("resolver should not be called for domain with recorded dns answer: %s", domain)
+			return "", false, nil
+		},
+	}
+
+	fakeIP, err := allocateFakeIP("example.com", dns.TypeA, defaultFakeTTL)
+	if err != nil {
+		t.Fatalf("allocate fake ip: %v", err)
+	}
+
+	plan, err := PlanRequest(RequestContext{
+		Source: RequestSourceMobile,
+		Host:   fakeIP,
+		Port:   443,
+	}, newLogger("[test]"))
+	if err != nil {
+		t.Fatalf("PlanRequest returned error: %v", err)
+	}
+	if plan.RecoveredDomain != "example.com" {
+		t.Fatalf("unexpected recovered domain: %s", plan.RecoveredDomain)
+	}
+	if plan.TargetHost != "203.0.113.10" {
+		t.Fatalf("unexpected target host: %s", plan.TargetHost)
+	}
+}
+
+func TestGenPolicyWithOptions_IPPolicyBootstrapMapToResolvesPreferredAddress(t *testing.T) {
+	origDefault := defaultPolicy
+	origDomainMatcher := domainMatcher
+	origIPMatcher := ipMatcher
+	origIPv6Matcher := ipv6Matcher
+	origResolver := defaultResolver
+	origBootstrapLookupIP := bootstrapLookupIP
+	t.Cleanup(func() {
+		defaultPolicy = origDefault
+		domainMatcher = origDomainMatcher
+		ipMatcher = origIPMatcher
+		ipv6Matcher = origIPv6Matcher
+		defaultResolver = origResolver
+		bootstrapLookupIP = origBootstrapLookupIP
+	})
+
+	defaultPolicy = Policy{Mode: ModeTLSRF}
+	domainMatcher = addrtrie.NewDomainMatcher[*Policy]()
+	ipMatcher = addrtrie.NewIPv4Trie[*Policy]()
+	ipv6Matcher = addrtrie.NewIPv6Trie[*Policy]()
+
+	mapTo := "cdn.rpnet.cc"
+	ipMatcher.Insert("203.0.113.0/24", &Policy{
+		Mode:  ModeTLSRF,
+		MapTo: &mapTo,
+	})
+
+	defaultResolver = stubResolver{
+		resolve: func(domain string, dnsMode DNSMode) (string, bool, error) {
+			if domain != "example.com" {
+				t.Fatalf("unexpected resolve domain: %s", domain)
+			}
+			return "203.0.113.10", false, nil
+		},
+	}
+	bootstrapLookupIP = func(_ context.Context, host string) ([]net.IPAddr, error) {
+		if host != "cdn.rpnet.cc" {
+			t.Fatalf("unexpected bootstrap host: %s", host)
+		}
+		return []net.IPAddr{{IP: net.ParseIP("198.51.100.77")}}, nil
+	}
+
+	dstHost, p, failed, blocked, matchedDomain, matchedIP := genPolicyWithOptions(newLogger("[test]"), "example.com", true)
+	if failed || blocked {
+		t.Fatalf("unexpected planning result failed=%v blocked=%v", failed, blocked)
+	}
+	if matchedDomain {
+		t.Fatal("example.com should be matched only by final ip policy in this test")
+	}
+	if !matchedIP {
+		t.Fatal("expected final ip policy to match after resolving example.com")
+	}
+	if dstHost != "198.51.100.77" {
+		t.Fatalf("unexpected preferred target host: %s", dstHost)
+	}
+	if p.Mode != ModeTLSRF {
+		t.Fatalf("expected ip policy mode=tls-rf, got mode=%s", p.Mode)
+	}
+}
+
 func TestGenPolicyWithOptions_GFWDomainUsesFallbackTLSRF(t *testing.T) {
+	resetRecordedDNSCache(t)
 	origDefault := defaultPolicy
 	origDomainMatcher := domainMatcher
 	origGFWMatcher := gfwDomainMatcher
@@ -222,6 +368,7 @@ func TestGenPolicyWithOptions_GFWDomainUsesFallbackTLSRF(t *testing.T) {
 }
 
 func TestGenPolicyWithOptions_UnmatchedDomainFallsBackToRaw(t *testing.T) {
+	resetRecordedDNSCache(t)
 	origDefault := defaultPolicy
 	origDomainMatcher := domainMatcher
 	origGFWMatcher := gfwDomainMatcher
@@ -269,4 +416,18 @@ func (s stubResolver) LookupDomain(ip string) (string, bool) {
 		return "", false
 	}
 	return lookupDomainByIP(parsed.String())
+}
+
+func resetRecordedDNSCache(t *testing.T) {
+	t.Helper()
+
+	origRecorded := recordedDNSIPs
+	recordedDNSMu.Lock()
+	recordedDNSIPs = make(map[string]recordedDNSResult)
+	recordedDNSMu.Unlock()
+	t.Cleanup(func() {
+		recordedDNSMu.Lock()
+		recordedDNSIPs = origRecorded
+		recordedDNSMu.Unlock()
+	})
 }

@@ -1,11 +1,14 @@
 package com.moi.lumine.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.moi.lumine.RuntimeLogSnapshot
 import com.moi.lumine.VpnRuntimeState
 import com.moi.lumine.VpnStatus
 import com.moi.lumine.model.LumineConfig
+import com.moi.lumine.repository.ExportedLogFile
 import com.moi.lumine.model.SubscriptionProfile
 import com.moi.lumine.repository.ConfigRepository
 import com.moi.lumine.repository.DownloadPhase
@@ -44,10 +47,20 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
     private val _subscriptionImportState = MutableStateFlow(SubscriptionImportState())
     val subscriptionImportState: StateFlow<SubscriptionImportState> = _subscriptionImportState
 
-    val logs: StateFlow<List<String>> = VpnRuntimeState.logs
+    private val _isExportingLogs = MutableStateFlow(false)
+    val isExportingLogs: StateFlow<Boolean> = _isExportingLogs
+
+    private val _logExportEvent = MutableStateFlow<LogExportEvent?>(null)
+    val logExportEvent: StateFlow<LogExportEvent?> = _logExportEvent
+
+    private val _logExportMessage = MutableStateFlow<String?>(null)
+    val logExportMessage: StateFlow<String?> = _logExportMessage
+
+    val logSnapshot: StateFlow<RuntimeLogSnapshot> = VpnRuntimeState.logSnapshot
     val isVpnActive: StateFlow<Boolean> = VpnRuntimeState.isVpnActive
 
     val vpnStatus: StateFlow<VpnStatus> = VpnRuntimeState.status
+    val isLogCaptureEnabled: StateFlow<Boolean> = VpnRuntimeState.isLogCaptureEnabled
 
     private val _editingRuleKey = MutableStateFlow<String?>(null)
     val editingRuleKey: StateFlow<String?> = _editingRuleKey
@@ -60,6 +73,47 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearLogs() {
         VpnRuntimeState.clearLogs()
+    }
+
+    fun toggleLogCapture() {
+        VpnRuntimeState.toggleLogCapture()
+    }
+
+    fun exportLogs() {
+        if (_isExportingLogs.value) {
+            return
+        }
+
+        viewModelScope.launch {
+            _isExportingLogs.value = true
+            try {
+                val exported: ExportedLogFile = repository.exportLogs(
+                    logs = logSnapshot.value.entries.map { it.raw },
+                    status = vpnStatus.value,
+                    selectedConfigName = _selectedConfigName.value
+                )
+                _logExportEvent.value = LogExportEvent(
+                    uri = exported.uri,
+                    fileName = exported.fileName
+                )
+            } catch (e: Exception) {
+                _logExportMessage.value = e.message ?: "导出日志失败"
+            } finally {
+                _isExportingLogs.value = false
+            }
+        }
+    }
+
+    fun consumeLogExportEvent() {
+        _logExportEvent.value = null
+    }
+
+    fun consumeLogExportMessage() {
+        _logExportMessage.value = null
+    }
+
+    fun reportLogExportMessage(message: String) {
+        _logExportMessage.value = message
     }
 
     fun resetSubscriptionImportState() {
@@ -289,6 +343,11 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         const val NEW_SUBSCRIPTION_ID = "__new_subscription__"
     }
 }
+
+data class LogExportEvent(
+    val uri: Uri,
+    val fileName: String
+)
 
 data class SubscriptionImportState(
     val stage: SubscriptionImportStage = SubscriptionImportStage.Idle,

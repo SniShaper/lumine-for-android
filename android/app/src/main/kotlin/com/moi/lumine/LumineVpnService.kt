@@ -7,7 +7,9 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.util.Log
+import com.moi.lumine.repository.ConfigRepository
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,26 +28,49 @@ class LumineVpnService : VpnService() {
     private var coreTunFd: Int? = null
     private var configName: String = "config" // Default config name
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val repository by lazy { ConfigRepository(applicationContext) }
     private val transitionLock = Any()
     private var logPumpJob: Job? = null
+    private var watchdogJob: Job? = null
     @Volatile private var isStarting = false
     @Volatile private var isStopping = false
     @Volatile private var coreStarted = false
     @Volatile private var coreOwnsTunFd = false
     @Volatile private var pendingStopRequested = false
     @Volatile private var coreStopIssued = false
+    @Volatile private var lastWatchdogRecoveryAt = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
-        if (action == "STOP") {
+        if (action == ACTION_STOP) {
+            repository.setVpnShouldRun(false)
             VpnRuntimeState.setStatus("stopping", "正在停止代理")
             stopVpn()
             return START_NOT_STICKY
         }
 
-        configName = intent?.getStringExtra("CONFIG_NAME") ?: "config"
+        val requestedConfig = intent?.getStringExtra(EXTRA_CONFIG_NAME)?.takeIf { it.isNotBlank() }
+        val shouldRecover = requestedConfig == null && repository.shouldVpnBeRunning()
+        val targetConfig = requestedConfig ?: if (shouldRecover) repository.getLastRunningConfigName() else null
+
+        if (targetConfig == null) {
+            Log.i("LumineVpn", "Ignoring sticky restart without persisted running state")
+            if (!Mobile.isRunning() && VpnRuntimeState.status.value.phase != "error") {
+                VpnRuntimeState.setActive(false)
+                VpnRuntimeState.setStatus("idle", "点此启动服务")
+            }
+            return START_STICKY
+        }
+
+        configName = targetConfig
+        repository.setSelectedConfigName(configName)
+        repository.setVpnShouldRun(true, configName)
+        if (shouldRecover) {
+            VpnRuntimeState.setStatus("starting", "正在恢复代理")
+            Log.i("LumineVpn", "Recovering VPN after service restart with config: $configName")
+        }
         startVpn()
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun startVpn() {
@@ -115,6 +140,7 @@ class LumineVpnService : VpnService() {
                             updateNotification("启动失败: $error")
                             VpnRuntimeState.setActive(false)
                             VpnRuntimeState.setStatus("error", "启动失败: $error")
+                            repository.setVpnShouldRun(false)
                             stopVpn()
                         } else {
                             coreStarted = true
@@ -123,6 +149,7 @@ class LumineVpnService : VpnService() {
                             VpnRuntimeState.setStatus("running", "代理运行中")
                             updateNotification("代理运行中")
                             startLogPump()
+                            startWatchdog()
                             if (consumePendingStopRequest()) {
                                 stopVpn()
                             }
@@ -131,6 +158,7 @@ class LumineVpnService : VpnService() {
                         Log.e("LumineVpn", "Failed to initialize Go core", e)
                         VpnRuntimeState.setActive(false)
                         VpnRuntimeState.setStatus("error", "核心初始化失败")
+                        repository.setVpnShouldRun(false)
                         stopVpn()
                     } finally {
                         isStarting = false
@@ -140,31 +168,47 @@ class LumineVpnService : VpnService() {
                 isStarting = false
                 VpnRuntimeState.setActive(false)
                 VpnRuntimeState.setStatus("error", "VPN 建立失败")
+                repository.setVpnShouldRun(false)
+                serviceScope.launch {
+                    stopServiceShell()
+                }
             }
         } catch (e: Exception) {
             Log.e("LumineVpn", "Failed to start VPN", e)
             isStarting = false
             VpnRuntimeState.setActive(false)
             VpnRuntimeState.setStatus("error", "启动 VPN 失败")
-            stopVpn()
+            repository.setVpnShouldRun(false)
+            serviceScope.launch {
+                stopServiceShell()
+            }
         }
     }
 
     private fun stopVpn() {
-        synchronized(transitionLock) {
+        val stopShellImmediately = synchronized(transitionLock) {
             if (isStopping) {
                 Log.i("LumineVpn", "Ignoring duplicate stop request")
-                return
+                return@synchronized false
             }
             if (!isStarting && !coreStarted && vpnInterface == null && coreTunFd == null) {
-                VpnRuntimeState.setStatus("idle", "点此启动服务")
-                return
+                true
+            } else {
+                pendingStopRequested = true
+                isStopping = true
+                false
             }
-            pendingStopRequested = true
-            isStopping = true
+        }
+        if (stopShellImmediately) {
+            serviceScope.launch {
+                stopWatchdog()
+                stopServiceShell()
+            }
+            return
         }
         serviceScope.launch {
             try {
+                stopWatchdog()
                 stopLogPump()
                 performCoreShutdownIfNeeded()
                 pendingStopRequested = false
@@ -196,6 +240,7 @@ class LumineVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        stopWatchdog()
         stopLogPump()
         performCoreShutdownIfNeeded()
         serviceScope.cancel()
@@ -247,6 +292,42 @@ class LumineVpnService : VpnService() {
         logPumpJob = null
     }
 
+    private fun startWatchdog() {
+        if (watchdogJob?.isActive == true) {
+            return
+        }
+        watchdogJob = serviceScope.launch {
+            while (isActive) {
+                delay(WATCHDOG_INTERVAL_MS)
+
+                if (!repository.shouldVpnBeRunning() || isStarting || isStopping || pendingStopRequested) {
+                    continue
+                }
+
+                val coreRunning = runCatching { Mobile.isRunning() }.getOrDefault(false)
+                if (coreRunning) {
+                    continue
+                }
+
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastWatchdogRecoveryAt < WATCHDOG_RECOVERY_COOLDOWN_MS) {
+                    continue
+                }
+                lastWatchdogRecoveryAt = now
+
+                Log.w("LumineVpn", "Watchdog detected core/service desync, restarting VPN")
+                VpnRuntimeState.setActive(false)
+                VpnRuntimeState.setStatus("starting", "检测到核心退出，正在恢复")
+                recoverVpnFromWatchdog()
+            }
+        }
+    }
+
+    private fun stopWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+    }
+
     private fun publishPendingLogs() {
         val newLogs = Mobile.getLogs()
         if (newLogs.isBlank()) {
@@ -276,6 +357,44 @@ class LumineVpnService : VpnService() {
         runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
     }
 
+    private suspend fun recoverVpnFromWatchdog() {
+        val claimed = synchronized(transitionLock) {
+            if (isStarting || isStopping || pendingStopRequested) {
+                false
+            } else {
+                isStopping = true
+                true
+            }
+        }
+        if (!claimed) {
+            return
+        }
+
+        try {
+            stopLogPump()
+            performCoreShutdownIfNeeded()
+
+            val tun = vpnInterface
+            vpnInterface = null
+            runCatching { tun?.close() }
+
+            closePendingTunFd()
+            coreStarted = false
+            coreOwnsTunFd = false
+            pendingStopRequested = false
+        } finally {
+            isStarting = false
+            isStopping = false
+        }
+
+        if (!repository.shouldVpnBeRunning()) {
+            stopServiceShell()
+            return
+        }
+
+        startVpn()
+    }
+
     private fun performCoreShutdownIfNeeded() {
         val shouldStopCore = synchronized(transitionLock) {
             if (coreStopIssued) {
@@ -295,6 +414,24 @@ class LumineVpnService : VpnService() {
         coreStarted = false
         coreOwnsTunFd = false
         coreTunFd = null
+    }
+
+    private suspend fun stopServiceShell() {
+        VpnRuntimeState.setActive(false)
+        withContext(Dispatchers.Main) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            }
+            stopSelf()
+            if (VpnRuntimeState.status.value.phase != "error") {
+                VpnRuntimeState.setStatus("idle", "点此启动服务")
+            }
+        }
     }
 
     private fun buildNotification(contentText: String): Notification {
@@ -334,7 +471,11 @@ class LumineVpnService : VpnService() {
     }
 
     companion object {
+        private const val ACTION_STOP = "STOP"
+        private const val EXTRA_CONFIG_NAME = "CONFIG_NAME"
         private const val NOTIFICATION_CHANNEL_ID = "lumine_vpn"
         private const val NOTIFICATION_ID = 1001
+        private const val WATCHDOG_INTERVAL_MS = 5_000L
+        private const val WATCHDOG_RECOVERY_COOLDOWN_MS = 15_000L
     }
 }

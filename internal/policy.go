@@ -32,6 +32,7 @@ func (m *Mode) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
+	s = strings.ToLower(strings.TrimSpace(s))
 	switch s {
 	case "raw":
 		*m = ModeRaw
@@ -531,17 +532,22 @@ func genPolicyWithOptions(logger *log.Logger, originHost string, resolveDomain b
 	}
 
 	if !skipIPRedirect && resolveDomain && net.ParseIP(dstHost) == nil {
-		var cached bool
 		resolvedFrom := dstHost
-		dstHost, cached, err = defaultResolver.Resolve(dstHost, p.DNSMode)
-		if err != nil {
-			logger.Error("Resolve", resolvedFrom+":", err)
-			return "", Policy{}, true, false, matchedDomain, matchedIP
-		}
-		if cached {
-			logger.Debug("DNS(cached):", resolvedFrom, "->", dstHost)
+		if rememberedIP, ok := lookupRecordedDNSIP(dstHost, p.DNSMode); ok {
+			dstHost = rememberedIP
+			logger.Debug("DNS(recorded):", resolvedFrom, "->", dstHost)
 		} else {
-			logger.Debug("DNS:", resolvedFrom, "->", dstHost)
+			var cached bool
+			dstHost, cached, err = defaultResolver.Resolve(dstHost, p.DNSMode)
+			if err != nil {
+				logger.Error("Resolve", resolvedFrom+":", err)
+				return "", Policy{}, true, false, matchedDomain, matchedIP
+			}
+			if cached {
+				logger.Debug("DNS(cached):", resolvedFrom, "->", dstHost)
+			} else {
+				logger.Debug("DNS:", resolvedFrom, "->", dstHost)
+			}
 		}
 	}
 

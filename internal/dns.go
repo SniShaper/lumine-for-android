@@ -9,10 +9,12 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elastic/go-freelru"
 	"github.com/miekg/dns"
+	log "github.com/moi-si/mylog"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -69,7 +71,16 @@ var (
 	ipDomainCache   *freelru.ShardedLRU[string, string]
 	dnsCacheTTL     time.Duration
 	dnsSingleflight *singleflight.Group
+	recordedDNSMu   sync.Mutex
+	recordedDNSIPs  = make(map[string]recordedDNSResult)
 )
+
+type recordedDNSResult struct {
+	ipv4       string
+	ipv4Expire time.Time
+	ipv6       string
+	ipv6Expire time.Time
+}
 
 func do53Exchange(req *dns.Msg) (resp *dns.Msg, err error) {
 	resp, _, err = dnsClient.Exchange(req, dnsAddr)
@@ -225,6 +236,101 @@ func rememberDomainIPMapping(domain, ip string) {
 	ipDomainCache.AddWithLifetime(ip, domain, dnsCacheTTL)
 }
 
+func rememberRecordedDNSAnswers(domain string, answers []dns.RR) {
+	if domain == "" || len(answers) == 0 {
+		return
+	}
+
+	now := time.Now()
+	domain = strings.ToLower(domain)
+
+	recordedDNSMu.Lock()
+	defer recordedDNSMu.Unlock()
+
+	entry := recordedDNSIPs[domain]
+	for _, answer := range answers {
+		switch rr := answer.(type) {
+		case *dns.A:
+			ttl := ttlOrDefault(rr.Hdr.Ttl)
+			entry.ipv4 = rr.A.String()
+			entry.ipv4Expire = now.Add(time.Duration(ttl) * time.Second)
+			rememberDomainIPMapping(domain, entry.ipv4)
+		case *dns.AAAA:
+			ttl := ttlOrDefault(rr.Hdr.Ttl)
+			entry.ipv6 = rr.AAAA.String()
+			entry.ipv6Expire = now.Add(time.Duration(ttl) * time.Second)
+			rememberDomainIPMapping(domain, entry.ipv6)
+		}
+	}
+
+	if entry.ipv4 == "" && entry.ipv6 == "" {
+		return
+	}
+	recordedDNSIPs[domain] = entry
+}
+
+func lookupRecordedDNSIP(domain string, dnsMode DNSMode) (string, bool) {
+	if domain == "" {
+		return "", false
+	}
+
+	now := time.Now()
+	domain = strings.ToLower(domain)
+
+	recordedDNSMu.Lock()
+	defer recordedDNSMu.Unlock()
+
+	entry, ok := recordedDNSIPs[domain]
+	if !ok {
+		return "", false
+	}
+
+	ipv4Valid := entry.ipv4 != "" && now.Before(entry.ipv4Expire)
+	ipv6Valid := entry.ipv6 != "" && now.Before(entry.ipv6Expire)
+
+	if !ipv4Valid {
+		entry.ipv4 = ""
+		entry.ipv4Expire = time.Time{}
+	}
+	if !ipv6Valid {
+		entry.ipv6 = ""
+		entry.ipv6Expire = time.Time{}
+	}
+
+	if entry.ipv4 == "" && entry.ipv6 == "" {
+		delete(recordedDNSIPs, domain)
+		return "", false
+	}
+	recordedDNSIPs[domain] = entry
+
+	switch dnsMode {
+	case DNSModeIPv4Only:
+		if ipv4Valid {
+			return entry.ipv4, true
+		}
+	case DNSModeIPv6Only:
+		if ipv6Valid {
+			return entry.ipv6, true
+		}
+	case DNSModePreferIPv6:
+		if ipv6Valid {
+			return entry.ipv6, true
+		}
+		if ipv4Valid {
+			return entry.ipv4, true
+		}
+	default:
+		if ipv4Valid {
+			return entry.ipv4, true
+		}
+		if ipv6Valid {
+			return entry.ipv6, true
+		}
+	}
+
+	return "", false
+}
+
 func lookupDomainByIP(ip string) (string, bool) {
 	if domain, ok := lookupFakeDomainByIP(ip); ok {
 		return domain, true
@@ -253,6 +359,10 @@ func HandleDNSQueryPacket(payload []byte) ([]byte, error) {
 	return wire, nil
 }
 
+func dnsLogger() *log.Logger {
+	return newLogger("[DNS] ")
+}
+
 func handleDNSQuery(req *dns.Msg) (*dns.Msg, error) {
 	if len(req.Question) != 1 {
 		return dnsExchange(req)
@@ -265,28 +375,53 @@ func handleDNSQuery(req *dns.Msg) (*dns.Msg, error) {
 
 	domain := strings.ToLower(strings.TrimSuffix(question.Name, "."))
 	switch question.Qtype {
+	case dns.TypeHTTPS:
+		dnsLogger().Info("DNS HTTPS passthrough:", "domain="+domain)
+		return dnsExchange(req)
 	case dns.TypeA:
-		if !shouldUseFakeIP(domain) {
-			return dnsExchange(req)
-		}
 		return buildFakeAddressResponse(req, domain, dns.TypeA)
 	case dns.TypeAAAA:
-		if !shouldUseFakeIP(domain) {
-			return dnsExchange(req)
-		}
 		return buildFakeAddressResponse(req, domain, dns.TypeAAAA)
 	default:
 		return dnsExchange(req)
 	}
 }
 
+func ttlOrDefault(ttl uint32) uint32 {
+	if ttl == 0 {
+		return 300
+	}
+	return ttl
+}
+
 func buildFakeAddressResponse(req *dns.Msg, domain string, qtype uint16) (*dns.Msg, error) {
+	logger := dnsLogger()
+	qtypeName := dns.TypeToString[qtype]
+	if qtypeName == "" {
+		qtypeName = fmt.Sprintf("TYPE%d", qtype)
+	}
+
 	upstreamResp, err := dnsExchange(req)
 	if err != nil {
 		return nil, wrap("upstream dns exchange", err)
 	}
 
 	if upstreamResp.Rcode != dns.RcodeSuccess {
+		logger.Info("DNS upstream:", domain, "type="+qtypeName, "rcode="+dns.RcodeToString[upstreamResp.Rcode])
+		return upstreamResp, nil
+	}
+
+	rememberRecordedDNSAnswers(domain, upstreamResp.Answer)
+	matchedRule := shouldUseFakeIP(domain)
+	logger.Info(
+		"DNS upstream:",
+		"domain="+domain,
+		"type="+qtypeName,
+		"answers="+summarizeDNSAnswerSet(upstreamResp.Answer),
+		"matched_rule="+boolToText(matchedRule),
+	)
+	if !matchedRule {
+		logger.Info("DNS fake-ip skip:", "domain="+domain, "type="+qtypeName, "reason=no_rule")
 		return upstreamResp, nil
 	}
 
@@ -308,6 +443,13 @@ func buildFakeAddressResponse(req *dns.Msg, domain string, qtype uint16) (*dns.M
 			if err != nil {
 				return nil, wrap("allocate fake ip", err)
 			}
+			logger.Info(
+				"DNS fake-ip allocated:",
+				"domain="+domain,
+				"type="+qtypeName,
+				"fake="+fakeIP,
+				"ttl="+formatInt(int(ttlOrDefault(header.Ttl))),
+			)
 		}
 
 		replaced = true
@@ -324,6 +466,7 @@ func buildFakeAddressResponse(req *dns.Msg, domain string, qtype uint16) (*dns.M
 	}
 
 	if replaced {
+		logger.Info("DNS fake-ip reply:", "domain="+domain, "type="+qtypeName, "answers="+summarizeDNSAnswerSet(reply.Answer))
 		return reply, nil
 	}
 
@@ -335,6 +478,14 @@ func buildFakeAddressResponse(req *dns.Msg, domain string, qtype uint16) (*dns.M
 	if err != nil {
 		return nil, wrap("allocate fallback fake ip", err)
 	}
+	logger.Info(
+		"DNS fake-ip allocated:",
+		"domain="+domain,
+		"type="+qtypeName,
+		"fake="+fakeIP,
+		"ttl="+formatInt(int(fallbackFakeTTL(upstreamResp))),
+		"fallback=true",
+	)
 
 	fakeRR, err := buildQuestionFakeAnswerRR(req.Question[0], fakeIP, fallbackFakeTTL(upstreamResp))
 	if err != nil {
@@ -342,6 +493,7 @@ func buildFakeAddressResponse(req *dns.Msg, domain string, qtype uint16) (*dns.M
 	}
 
 	reply.Answer = []dns.RR{fakeRR}
+	logger.Info("DNS fake-ip reply:", "domain="+domain, "type="+qtypeName, "answers="+summarizeDNSAnswerSet(reply.Answer))
 	return reply, nil
 }
 
@@ -424,4 +576,62 @@ func fallbackFakeTTL(resp *dns.Msg) uint32 {
 		return defaultFakeTTL
 	}
 	return minTTL
+}
+
+func summarizeDNSAnswerSet(answer []dns.RR) string {
+	if len(answer) == 0 {
+		return "none"
+	}
+
+	limit := len(answer)
+	if limit > 4 {
+		limit = 4
+	}
+
+	parts := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		switch rr := answer[i].(type) {
+		case *dns.A:
+			parts = append(parts, "A="+rr.A.String())
+		case *dns.AAAA:
+			parts = append(parts, "AAAA="+rr.AAAA.String())
+		case *dns.CNAME:
+			parts = append(parts, "CNAME="+rr.Target)
+		case *dns.HTTPS:
+			parts = append(parts, "HTTPS")
+		case *dns.SVCB:
+			parts = append(parts, "SVCB")
+		default:
+			header := answer[i].Header()
+			if header == nil {
+				parts = append(parts, "UNKNOWN")
+				continue
+			}
+			name := dns.TypeToString[header.Rrtype]
+			if name == "" {
+				name = fmt.Sprintf("TYPE%d", header.Rrtype)
+			}
+			parts = append(parts, name)
+		}
+	}
+
+	result := strings.Join(parts, ",")
+	if len(answer) > limit {
+		result += ",+" + formatInt(len(answer)-limit)
+	}
+	return result
+}
+
+func stringOrDefault(value *string) string {
+	if value == nil || *value == "" {
+		return "-"
+	}
+	return *value
+}
+
+func boolToText(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }

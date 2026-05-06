@@ -2,6 +2,8 @@
 
 [简体中文](./README_zh.md)
 
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="75">](https://f-droid.org/packages/com.moi.lumine)
+
 `lumine-mobile` is a Clash-style Android implementation built on top of [Lumine](https://github.com/moi-si/lumine).
 
 It brings Lumine's core to Android with a `VPN/TUN` pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.

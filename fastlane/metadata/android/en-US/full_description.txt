@@ -1,26 +1,21 @@
-`lumine-mobile` is a Clash-style Android implementation built on top of [Lumine](https://github.com/moi-si/lumine).
-
-It brings Lumine's core to Android with a `VPN/TUN` pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
-You can also view it as a mobile-side functional extension of [SniShaper](https://github.com/coolapijust/SniShaper).
-
-## Features
-
-- Native Android implementation built with Kotlin and `gomobile`
-- Proxying and routing powered by Lumine core
-- Clash-style configuration management UI
-- Subscription URL import and rule switching
-- Dedicated rule page for viewing, editing, and creating rules
-- Blacklist-driven routing based on GFWlist for smarter traffic splitting
-- Flexible Fake IP implementation
-
-## Upstream
-
-- Lumine: <https://github.com/moi-si/lumine>
-
-This project uses Lumine as its core and includes a number of local modifications. Some modes may still be unstable. The configuration file syntax remains compatible with upstream. To optimize mobile performance, some original IP-range rules were removed and the routing behavior was adjusted.
-
-## Acknowledgements
-
-The technique in this project was originally taken from the Python tool [TlsFragment](https://github.com/maoist2009/TlsFragment).
-
-We rewrote the whole implementation in Go, and ended up with a faster, more feature‑rich version whose configuration file looks similar to – but is not compatible with - the original.
+<p><code>lumine-mobile</code> is a Clash-style Android implementation built on top of <a href="https://github.com/moi-si/lumine">Lumine</a>.</p>
+<p>It brings Lumine&#39;s core to Android with a <code>VPN/TUN</code> pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
+You can also view it as a mobile-side functional extension of <a href="https://github.com/coolapijust/SniShaper">SniShaper</a>.</p>
+<h2>Features</h2>
+<ul>
+<li>Native Android implementation built with Kotlin and <code>gomobile</code></li>
+<li>Proxying and routing powered by Lumine core</li>
+<li>Clash-style configuration management UI</li>
+<li>Subscription URL import and rule switching</li>
+<li>Dedicated rule page for viewing, editing, and creating rules</li>
+<li>Blacklist-driven routing based on GFWlist for smarter traffic splitting</li>
+<li>Flexible Fake IP implementation</li>
+</ul>
+<h2>Upstream</h2>
+<ul>
+<li>Lumine: <a href="https://github.com/moi-si/lumine">https://github.com/moi-si/lumine</a></li>
+</ul>
+<p>This project uses Lumine as its core and includes a number of local modifications. Some modes may still be unstable. The configuration file syntax remains compatible with upstream. To optimize mobile performance, some original IP-range rules were removed and the routing behavior was adjusted.</p>
+<h2>Acknowledgements</h2>
+<p>The technique in this project was originally taken from the Python tool <a href="https://github.com/maoist2009/TlsFragment">TlsFragment</a>.</p>
+<p>We rewrote the whole implementation in Go, and ended up with a faster, more feature‑rich version whose configuration file looks similar to – but is not compatible with - the original.</p>

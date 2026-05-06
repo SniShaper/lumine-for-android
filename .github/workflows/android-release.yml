@@ -110,6 +110,7 @@ jobs:
             -target=android \
             -androidapi "${GOMOBILE_ANDROID_API}" \
             -o android/app/libs/LumineCore.aar \
+            -ldflags="-s -w -buildid=" -trimpath \
             ./mobile
 
       - name: Prepare signing keystore

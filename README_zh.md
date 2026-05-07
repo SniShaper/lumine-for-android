@@ -1,5 +1,7 @@
 # lumine-mobile
 
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on-zh-cn.png" alt="Get it on F-Droid" height="75">](https://f-droid.org/packages/com.moi.lumine)
+
 `lumine-mobile` 是 [Lumine](https://github.com/moi-si/lumine) 在 Android 平台上的 Clash 风格实现。
 
 它基于 `Lumine` 的核心，结合 Android `VPN/TUN` 方案与移动端界面，提供更贴近 Clash 的使用体验，以及更智能的分流与规则管理能力。

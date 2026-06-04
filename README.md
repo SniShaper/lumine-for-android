@@ -4,7 +4,7 @@
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="75">](https://f-droid.org/packages/com.moi.lumine)
 
-`lumine-mobile` is a Clash-style Android implementation built on top of [enimul](https://github.com/lzpls/enimul) (formly lumine).
+`lumine-mobile` is a Clash-style Android implementation built on top of [enimul](https://github.com/lzpls/enimul) (formly [lumine](https://codeberg.org/PonyCW26/lumine)).
 
 It brings enimul's core to Android with a `VPN/TUN` pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
 You can also view it as a mobile-side functional extension of [SniShaper](https://github.com/coolapijust/SniShaper).

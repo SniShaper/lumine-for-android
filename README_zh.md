@@ -2,7 +2,7 @@
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on-zh-cn.png" alt="Get it on F-Droid" height="75">](https://f-droid.org/packages/com.moi.lumine)
 
-`lumine-mobile` 是 [enimul](https://github.com/lzpls/enimul) (前 lumine) 在 Android 平台上的 Clash 风格实现。
+`lumine-mobile` 是 [enimul](https://github.com/lzpls/enimul) (前 [lumine](https://codeberg.org/PonyCW26/lumine)) 在 Android 平台上的 Clash 风格实现。
 
 它基于 `enimul` 的核心，结合 Android `VPN/TUN` 方案与移动端界面，提供更贴近 Clash 的使用体验，以及更智能的分流与规则管理能力。
 你也可以将其看作[SniShaper](https://github.com/coolapijust/SniShaper)在移动端的功能扩展。

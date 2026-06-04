@@ -1,10 +1,10 @@
-<p><code>lumine-mobile</code> is a Clash-style Android implementation built on top of <a href="https://github.com/moi-si/lumine">Lumine</a>.</p>
-<p>It brings Lumine&#39;s core to Android with a <code>VPN/TUN</code> pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
+<p><code>lumine-mobile</code> is a Clash-style Android implementation built on top of <a href="https://github.com/lzpls/enimul">enimul</a> (formly lumine).</p>
+<p>It brings enimul&#39;s core to Android with a <code>VPN/TUN</code> pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
 You can also view it as a mobile-side functional extension of <a href="https://github.com/coolapijust/SniShaper">SniShaper</a>.</p>
 <h2>Features</h2>
 <ul>
 <li>Native Android implementation built with Kotlin and <code>gomobile</code></li>
-<li>Proxying and routing powered by Lumine core</li>
+<li>Proxying and routing powered by enimul core</li>
 <li>Clash-style configuration management UI</li>
 <li>Subscription URL import and rule switching</li>
 <li>Dedicated rule page for viewing, editing, and creating rules</li>
@@ -13,9 +13,9 @@ You can also view it as a mobile-side functional extension of <a href="https://g
 </ul>
 <h2>Upstream</h2>
 <ul>
-<li>Lumine: <a href="https://github.com/moi-si/lumine">https://github.com/moi-si/lumine</a></li>
+<li>enimul (formly lumine): <a href="https://github.com/lzpls/enimul">https://github.com/lzpls/enimul</a></li>
 </ul>
-<p>This project uses Lumine as its core and includes a number of local modifications. Some modes may still be unstable. The configuration file syntax remains compatible with upstream. To optimize mobile performance, some original IP-range rules were removed and the routing behavior was adjusted.</p>
+<p>This project uses enimul as its core and includes a number of local modifications. Some modes may still be unstable. The configuration file syntax remains compatible with upstream. To optimize mobile performance, some original IP-range rules were removed and the routing behavior was adjusted.</p>
 <h2>Acknowledgements</h2>
 <p>The technique in this project was originally taken from the Python tool <a href="https://github.com/maoist2009/TlsFragment">TlsFragment</a>.</p>
 <p>We rewrote the whole implementation in Go, and ended up with a faster, more feature‑rich version whose configuration file looks similar to – but is not compatible with - the original.</p>

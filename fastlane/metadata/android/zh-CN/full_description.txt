@@ -1,10 +1,12 @@
-<p><code>lumine-mobile</code> 是 <a href="https://github.com/moi-si/lumine">Lumine</a> 在 Android 平台上的 Clash 风格实现。</p>
-<p>它基于 <code>Lumine</code> 的核心，结合 Android <code>VPN/TUN</code> 方案与移动端界面，提供更贴近 Clash 的使用体验，以及更智能的分流与规则管理能力。
+<h1>lumine-mobile</h1>
+<p><a href="https://f-droid.org/packages/com.moi.lumine"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on-zh-cn.png" alt="Get it on F-Droid" height="75"></a></p>
+<p><code>lumine-mobile</code> 是 <a href="https://github.com/lzpls/enimul">enimul</a> (前 lumine) 在 Android 平台上的 Clash 风格实现。</p>
+<p>它基于 <code>enimul</code> 的核心，结合 Android <code>VPN/TUN</code> 方案与移动端界面，提供更贴近 Clash 的使用体验，以及更智能的分流与规则管理能力。
 你也可以将其看作<a href="https://github.com/coolapijust/SniShaper">SniShaper</a>在移动端的功能扩展。</p>
 <h2>特性</h2>
 <ul>
 <li>Android 原生实现，kotlin+gomobile，面向移动端</li>
-<li>基于 <code>Lumine</code> 核心的代理与分流方案</li>
+<li>基于 <code>enimul</code> 核心的代理与分流方案</li>
 <li>Clash 风格的配置管理界面</li>
 <li>支持订阅 URL 拉取配置并切换规则</li>
 <li>独立的规则页面，可查看、编辑和新建规则</li>
@@ -13,8 +15,9 @@
 </ul>
 <h2>上游</h2>
 <ul>
-<li>Lumine: <a href="https://github.com/moi-si/lumine">https://github.com/moi-si/lumine</a></li>
+<li>enimul: <a href="https://github.com/lzpls/enimul">https://github.com/lzpls/enimul</a></li>
 </ul>
+<p>使用了enimul作为核心，并进行了一部分修改；部分模式可能工作不稳定。配置文件语法兼容原版。为优化移动端性能，删除原版规则部分ip段，并修改了分流方式。</p>
 <p>使用了lumine作为核心，并进行了一部分修改；部分模式可能工作不稳定。配置文件语法兼容原版。为优化移动端性能，删除原版规则部分ip段，并修改了分流方式。</p>
 <h2>致谢</h2>
 <p>本项目中的技术最初源自 Python 工具 <a href="https://github.com/maoist2009/TlsFragment">TlsFragment</a>。</p>

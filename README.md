@@ -4,15 +4,15 @@
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="75">](https://f-droid.org/packages/com.moi.lumine)
 
-`lumine-mobile` is a Clash-style Android implementation built on top of [Lumine](https://github.com/moi-si/lumine).
+`lumine-mobile` is a Clash-style Android implementation built on top of [enimul](https://github.com/lzpls/enimul) (formly lumine).
 
-It brings Lumine's core to Android with a `VPN/TUN` pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
+It brings enimul's core to Android with a `VPN/TUN` pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
 You can also view it as a mobile-side functional extension of [SniShaper](https://github.com/coolapijust/SniShaper).
 
 ## Features
 
 - Native Android implementation built with Kotlin and `gomobile`
-- Proxying and routing powered by Lumine core
+- Proxying and routing powered by enimul core
 - Clash-style configuration management UI
 - Subscription URL import and rule switching
 - Dedicated rule page for viewing, editing, and creating rules
@@ -21,9 +21,9 @@ You can also view it as a mobile-side functional extension of [SniShaper](https:
 
 ## Upstream
 
-- Lumine: <https://github.com/moi-si/lumine>
+- enimul (formly lumine): <https://github.com/lzpls/enimul>
 
-This project uses Lumine as its core and includes a number of local modifications. Some modes may still be unstable. The configuration file syntax remains compatible with upstream. To optimize mobile performance, some original IP-range rules were removed and the routing behavior was adjusted.
+This project uses enimul as its core and includes a number of local modifications. Some modes may still be unstable. The configuration file syntax remains compatible with upstream. To optimize mobile performance, some original IP-range rules were removed and the routing behavior was adjusted.
 
 ## Build
 
@@ -47,7 +47,7 @@ make android
 
 ## Notes
 
-This repository is not the official upstream Lumine repository. It is an Android-focused implementation and adaptation layer. The project is still in an early stage, and some websites may behave unstably. Feedback is welcome.
+This repository is not the official upstream enimul repository. It is an Android-focused implementation and adaptation layer. The project is still in an early stage, and some websites may behave unstably. Feedback is welcome.
 
 ## License
 

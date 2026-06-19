@@ -4,7 +4,7 @@
 
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="75">](https://f-droid.org/packages/com.moi.lumine)
 
-`lumine-mobile` is a Clash-style Android implementation built on top of [enimul](https://github.com/lzpls/enimul) (formly [lumine](https://codeberg.org/PonyCW26/lumine)).
+`lumine-mobile` is a Clash-style Android implementation built on top of [enimul](https://github.com/lzpls/enimul) (formerly [lumine](https://codeberg.org/PonyCW26/lumine)).
 
 It brings enimul's core to Android with a `VPN/TUN` pipeline and a mobile-friendly UI, offering a more Clash-like experience with smarter routing and rule management.
 You can also view it as a mobile-side functional extension of [SniShaper](https://github.com/coolapijust/SniShaper).
@@ -21,7 +21,7 @@ You can also view it as a mobile-side functional extension of [SniShaper](https:
 
 ## Upstream
 
-- enimul (formly lumine): <https://github.com/lzpls/enimul>
+- enimul (formerly lumine): <https://github.com/lzpls/enimul>
 
 This project uses enimul as its core and includes a number of local modifications. Some modes may still be unstable. The configuration file syntax remains compatible with upstream. To optimize mobile performance, some original IP-range rules were removed and the routing behavior was adjusted.
 

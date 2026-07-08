@@ -662,6 +662,11 @@ func genDoHDialFunc() (func(ctx context.Context, network, address string) (net.C
 			host = selectedHost
 		}
 	}
+	if net.ParseIP(host) == nil {
+		if host, err = resolveBootstrapHost(host); err != nil {
+			return nil, err
+		}
+	}
 	switch dohConnPolicy.Mode {
 	case ModeBlock, ModeTLSAlert:
 		return nil, E.New("the mode of the DoH cannot be `block`")

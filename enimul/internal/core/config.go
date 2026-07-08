@@ -83,6 +83,10 @@ func LoadConfig(filePath string) (string, string, error) {
 		}
 	}
 
+	if err := loadBuiltinGFWList(); err != nil {
+		return "", "", err
+	}
+
 	ipMatcher = addrtrie.NewIPv4Trie[*Policy]()
 	ipv6Matcher = addrtrie.NewIPv6Trie[*Policy]()
 	for patterns, policy := range conf.IpPolicies {

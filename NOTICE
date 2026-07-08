@@ -1,5 +1,12 @@
+lumine-mobile
 Copyright (C) 2025 Moi
-All rights reserved.
 
-This software is licensed under the terms of the GNU General Public License v3.0.
-See LICENSE file for details.
+lumine-mobile is a Clash-style Android implementation built on top of
+enimul (https://github.com/lzpls/enimul), formerly lumine
+(https://codeberg.org/PonyCW26/lumine).
+
+enimul
+Copyright (C) 2026 lzpls
+
+This software is licensed under the terms of the GNU Affero General
+Public License v3.0. See LICENSE file for details.

@@ -49,4 +49,4 @@ make android
 
 ## 开源许可
 
-GPLv3
+AGPLv3

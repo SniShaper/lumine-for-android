@@ -51,4 +51,4 @@ This repository is not the official upstream enimul repository. It is an Android
 
 ## License
 
-GPLv3
+AGPLv3

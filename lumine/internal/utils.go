@@ -299,9 +299,14 @@ func ipRedirect(logger *log.Logger, ip string) (string, *Policy, error) {
 		if err != nil {
 			return "", nil, err
 		}
+	} else if net.ParseIP(mapTo) == nil {
+		mapTo, err = resolveBootstrapHost(mapTo)
+		if err != nil {
+			return "", nil, err
+		}
 	}
 	if logger != nil && ip != mapTo {
-		logger.Info("Redirect:", ip, "->", mapTo)
+		logger.Debug("Redirect:", ip, "->", mapTo)
 	} else {
 		policy, _ = getIPPolicy(mapTo)
 	}

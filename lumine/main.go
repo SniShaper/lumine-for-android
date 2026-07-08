@@ -26,6 +26,6 @@ func main() {
 
 	done := make(chan struct{})
 	go lumine.SOCKS5Accept(addr, socks5Addr, done)
-	lumine.HTTPAccept(hAddr, httpAddr)
-	<-done
+	go lumine.HTTPAccept(hAddr, httpAddr, done)
+	select {}
 }

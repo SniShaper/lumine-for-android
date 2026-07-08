@@ -112,8 +112,8 @@ func sendWithNoise(
 		toWrite := len(fakeData)
 		rawWriteErr = rawConn.Write(func(fd uintptr) (done bool) {
 			for toWrite > 0 {
-				var n int64
-				n, innerErr = unix.Splice(pipeR, nil, int(fd), nil, toWrite, unix.SPLICE_F_NONBLOCK)
+				n, spliceErr := unix.Splice(pipeR, nil, int(fd), nil, toWrite, unix.SPLICE_F_NONBLOCK)
+				innerErr = spliceErr
 				if innerErr != nil {
 					if innerErr == unix.EINTR {
 						continue

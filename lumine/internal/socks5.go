@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"slices"
 	"strconv"
+	"strings"
 
 	log "github.com/moi-si/mylog"
 )
@@ -20,8 +20,12 @@ const (
 	socks5RepAtypNotSupported byte = 0x08
 )
 
-func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
-	defer func() { done <- struct{}{} }()
+const (
+	socks5CmdConnect      byte = 0x01
+	socks5CmdUDPAssociate byte = 0x03
+)
+
+func SOCKS5Accept(addr *string, serverAddr string, stop <-chan struct{}) {
 	var listenAddr string
 	if *addr == "" {
 		listenAddr = serverAddr
@@ -36,12 +40,19 @@ func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
 		return
 	}
 
-	logger := log.New(os.Stdout, "[S00000]", log.LstdFlags, logLevel)
+	logger := newLogger("[S00000]")
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		logger.Error(err)
 		return
 	}
+	defer ln.Close()
+
+	go func() {
+		<-stop
+		_ = ln.Close()
+	}()
+
 	if listenAddr[0] == ':' {
 		listenAddr = "0.0.0.0" + listenAddr
 	}
@@ -51,6 +62,12 @@ func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			select {
+			case <-stop:
+				logger.Info("SOCKS5 proxy server stopped")
+				return
+			default:
+			}
 			logger.Error("Accept:", err)
 		} else {
 			connID += 1
@@ -69,14 +86,210 @@ func readN(conn net.Conn, n int) ([]byte, error) {
 }
 
 func sendReply(logger *log.Logger, conn net.Conn, rep byte) {
-	resp := []byte{0x05, rep, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	sendReplyWithAddr(logger, conn, rep, nil)
+}
+
+func sendReplyWithAddr(logger *log.Logger, conn net.Conn, rep byte, addr net.Addr) {
+	resp := []byte{0x05, rep, 0x00}
+	if addr == nil {
+		resp = append(resp, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+	} else {
+		udpAddr, ok := addr.(*net.UDPAddr)
+		if !ok {
+			if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+				udpAddr = &net.UDPAddr{IP: tcpAddr.IP, Port: tcpAddr.Port}
+			}
+		}
+		if udpAddr == nil {
+			resp = append(resp, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+		} else if ip4 := udpAddr.IP.To4(); ip4 != nil {
+			resp = append(resp, 0x01)
+			resp = append(resp, ip4...)
+			resp = binary.BigEndian.AppendUint16(resp, uint16(udpAddr.Port))
+		} else if ip16 := udpAddr.IP.To16(); ip16 != nil {
+			resp = append(resp, 0x04)
+			resp = append(resp, ip16...)
+			resp = binary.BigEndian.AppendUint16(resp, uint16(udpAddr.Port))
+		} else {
+			resp = append(resp, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+		}
+	}
 	if _, err := conn.Write(resp); err != nil {
 		logger.Debug("Send SOCKS5 reply:", err)
 	}
 }
 
+func readSocksAddr(conn net.Conn, atyp byte) (string, error) {
+	switch atyp {
+	case 0x01:
+		ipBytes, err := readN(conn, 4)
+		if err != nil {
+			return "", err
+		}
+		return net.IP(ipBytes).String(), nil
+	case 0x04:
+		ipBytes, err := readN(conn, 16)
+		if err != nil {
+			return "", err
+		}
+		return net.IP(ipBytes).String(), nil
+	case 0x03:
+		lenByte, err := readN(conn, 1)
+		if err != nil {
+			return "", err
+		}
+		domainBytes, err := readN(conn, int(lenByte[0]))
+		if err != nil {
+			return "", err
+		}
+		return string(domainBytes), nil
+	default:
+		return "", fmt.Errorf("invalid address type: %d", atyp)
+	}
+}
+
+func encodeSocksUDPAddr(addr net.Addr) ([]byte, error) {
+	host, portStr, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return nil, err
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := make([]byte, 0, 22)
+	if ip := net.ParseIP(host); ip != nil {
+		if ip4 := ip.To4(); ip4 != nil {
+			buf = append(buf, 0x01)
+			buf = append(buf, ip4...)
+		} else {
+			buf = append(buf, 0x04)
+			buf = append(buf, ip.To16()...)
+		}
+	} else {
+		if len(host) > 255 {
+			return nil, fmt.Errorf("host too long: %s", host)
+		}
+		buf = append(buf, 0x03, byte(len(host)))
+		buf = append(buf, host...)
+	}
+
+	buf = binary.BigEndian.AppendUint16(buf, uint16(port))
+	return buf, nil
+}
+
+func decodeSocksUDPPacket(packet []byte) (net.Addr, []byte, error) {
+	if len(packet) < 4 {
+		return nil, nil, fmt.Errorf("udp packet too short")
+	}
+	if packet[2] != 0x00 {
+		return nil, nil, fmt.Errorf("fragmented udp packets are not supported")
+	}
+
+	offset := 3
+	var host string
+	switch packet[offset] {
+	case 0x01:
+		if len(packet) < offset+1+4+2 {
+			return nil, nil, fmt.Errorf("udp ipv4 packet too short")
+		}
+		host = net.IP(packet[offset+1 : offset+5]).String()
+		offset += 5
+	case 0x04:
+		if len(packet) < offset+1+16+2 {
+			return nil, nil, fmt.Errorf("udp ipv6 packet too short")
+		}
+		host = net.IP(packet[offset+1 : offset+17]).String()
+		offset += 17
+	case 0x03:
+		if len(packet) < offset+2 {
+			return nil, nil, fmt.Errorf("udp domain packet too short")
+		}
+		hostLen := int(packet[offset+1])
+		if len(packet) < offset+2+hostLen+2 {
+			return nil, nil, fmt.Errorf("udp domain packet too short")
+		}
+		host = string(packet[offset+2 : offset+2+hostLen])
+		offset += 2 + hostLen
+	default:
+		return nil, nil, fmt.Errorf("unsupported udp atyp: %d", packet[offset])
+	}
+
+	port := int(binary.BigEndian.Uint16(packet[offset : offset+2]))
+	offset += 2
+
+	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(host, strconv.Itoa(port)))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return addr, packet[offset:], nil
+}
+
+func handleUDPAssociate(logger *log.Logger, cliConn net.Conn) {
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		logger.Error("Listen UDP:", err)
+		sendReply(logger, cliConn, socks5RepServerFailure)
+		return
+	}
+	defer pc.Close()
+
+	sendReplyWithAddr(logger, cliConn, socks5RepSuccess, pc.LocalAddr())
+
+	done := make(chan struct{})
+	defer close(done)
+
+	var clientAddr net.Addr
+	go func() {
+		buf := make([]byte, 64*1024)
+		for {
+			n, addr, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+
+			if clientAddr == nil || addr.String() == clientAddr.String() {
+				clientAddr = addr
+				targetAddr, payload, err := decodeSocksUDPPacket(buf[:n])
+				if err != nil {
+					logger.Debug("Decode UDP packet:", err)
+					continue
+				}
+				if _, err = pc.WriteTo(payload, targetAddr); err != nil {
+					logger.Debug("Forward UDP packet:", err)
+				}
+				continue
+			}
+
+			if clientAddr == nil {
+				continue
+			}
+
+			addrBytes, err := encodeSocksUDPAddr(addr)
+			if err != nil {
+				logger.Debug("Encode UDP addr:", err)
+				continue
+			}
+
+			resp := make([]byte, 0, 3+len(addrBytes)+n)
+			resp = append(resp, 0x00, 0x00, 0x00)
+			resp = append(resp, addrBytes...)
+			resp = append(resp, buf[:n]...)
+			if _, err = pc.WriteTo(resp, clientAddr); err != nil {
+				logger.Debug("Write UDP response:", err)
+			}
+		}
+	}()
+
+	_, _ = io.Copy(io.Discard, cliConn)
+	logger.Info("UDP associate closed")
+}
+
 func socks5Handler(cliConn net.Conn, id uint32) {
-	logger := log.New(os.Stdout, fmt.Sprintf("[S%05x]", id), log.LstdFlags, logLevel)
+	logger := newLogger(fmt.Sprintf("[S%05x]", id))
 	logger.Info("Connection from", cliConn.RemoteAddr().String())
 
 	var (
@@ -130,81 +343,34 @@ func socks5Handler(cliConn net.Conn, id uint32) {
 		logger.Error("Expected socks version 5, but got", byteToString(header[0]))
 		return
 	}
-	if header[1] != 0x01 {
-		logger.Error("Expected cmd CONNECT, but got", byteToString(header[1]))
+	cmd := header[1]
+	if cmd != socks5CmdConnect && cmd != socks5CmdUDPAssociate {
+		logger.Error("Expected cmd CONNECT/UDP ASSOCIATE, but got", byteToString(cmd))
 		sendReply(logger, cliConn, socks5RepCmdNotSupported)
 		return
 	}
 
-	var (
-		originHost, dstHost string
-		policy              Policy
-	)
+	var originHost string
+	originHost, err = readSocksAddr(cliConn, header[3])
+	if err != nil {
+		logger.Error("Read destination address:", err)
+		if strings.Contains(err.Error(), "invalid address type") {
+			sendReply(logger, cliConn, socks5RepAtypNotSupported)
+		}
+		return
+	}
+	if cmd == socks5CmdUDPAssociate {
+		if _, err = readN(cliConn, 2); err != nil {
+			logger.Error("Read UDP associate port:", err)
+			return
+		}
+		logger.Info("UDP ASSOCIATE")
+		handleUDPAssociate(logger, cliConn)
+		return
+	}
+
 	switch header[3] {
-	case 0x01: // IPv4 address
-		ipBytes, err := readN(cliConn, 4)
-		if err != nil {
-			logger.Error("Read IPv4 address:", err)
-			return
-		}
-		originHost = net.IP(ipBytes).String()
-		var ipPolicy *Policy
-		dstHost, ipPolicy, err = ipRedirect(logger, originHost)
-		if err != nil {
-			logger.Error("IP redirect:", err)
-			sendReply(logger, cliConn, socks5RepServerFailure)
-			return
-		}
-		if ipPolicy == nil {
-			policy = defaultPolicy
-		} else {
-			policy = mergePolicies(ipPolicy, &defaultPolicy)
-		}
-	case 0x04: // IPv6 address
-		ipBytes, err := readN(cliConn, 16)
-		if err != nil {
-			logger.Error("Read IPv6 address:", err)
-			return
-		}
-		originHost = net.IP(ipBytes).String()
-		var ipPolicy *Policy
-		dstHost, ipPolicy, err = ipRedirect(logger, originHost)
-		if err != nil {
-			logger.Error("IP redirect:", err)
-			sendReply(logger, cliConn, socks5RepServerFailure)
-			return
-		}
-		if ipPolicy == nil {
-			policy = defaultPolicy
-		} else {
-			policy = mergePolicies(ipPolicy, &defaultPolicy)
-		}
-	case 0x03: // Domain name
-		lenByte, err := readN(cliConn, 1)
-		if err != nil {
-			logger.Error("Read domain length:", err)
-			return
-		}
-		domainBytes, err := readN(cliConn, int(lenByte[0]))
-		if err != nil {
-			logger.Error("Read domain address:", err)
-		}
-		originHost = string(domainBytes)
-		var failed, blocked bool
-		dstHost, policy, failed, blocked = genPolicy(logger, originHost)
-		if failed {
-			sendReply(logger, cliConn, 0x01)
-			return
-		}
-		if blocked {
-			logger.Info("Connection blocked:", originHost)
-			if policy.ReplyFirst == BoolTrue {
-				sendReply(logger, cliConn, socks5RepSuccess)
-			} else {
-				sendReply(logger, cliConn, socks5RepConnNotAllowed)
-			}
-			return
-		}
+	case 0x01, 0x03, 0x04:
 	default:
 		logger.Error("Invalid address type:", byteToString(header[3]))
 		sendReply(logger, cliConn, socks5RepAtypNotSupported)
@@ -216,6 +382,26 @@ func socks5Handler(cliConn net.Conn, id uint32) {
 		return
 	}
 	dstPort := binary.BigEndian.Uint16(portBytes)
+	plan, err := PlanRequest(RequestContext{
+		Source: RequestSourceSOCKS5,
+		Host:   originHost,
+		Port:   int(dstPort),
+	}, logger)
+	if err != nil {
+		logger.Error("Build dial plan:", err)
+		sendReply(logger, cliConn, socks5RepServerFailure)
+		return
+	}
+	policy := plan.Policy
+	if plan.Blocked {
+		logger.Info("Connection blocked:", originHost)
+		if header[3] == 0x03 && policy.ReplyFirst == BoolTrue {
+			sendReply(logger, cliConn, socks5RepSuccess)
+		} else {
+			sendReply(logger, cliConn, socks5RepConnNotAllowed)
+		}
+		return
+	}
 	oldTarget := net.JoinHostPort(originHost, strconv.FormatUint(uint64(dstPort), 10))
 	logger.Info("CONNECT", oldTarget)
 	logger.Info("Policy:", policy)
@@ -223,10 +409,7 @@ func socks5Handler(cliConn net.Conn, id uint32) {
 		sendReply(logger, cliConn, socks5RepConnNotAllowed)
 		return
 	}
-	if policy.Port != 0 && policy.Port != -1 {
-		dstPort = uint16(policy.Port)
-	}
-	target := net.JoinHostPort(dstHost, formatUint(dstPort))
+	target := plan.TargetAddress()
 
 	replyFirst := policy.ReplyFirst == BoolTrue
 	if !replyFirst {

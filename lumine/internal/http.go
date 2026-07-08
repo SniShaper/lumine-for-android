@@ -7,8 +7,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
-	"os"
-	"strings"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -22,7 +21,7 @@ const (
 
 var httpConnID uint32
 
-func HTTPAccept(addr *string, serverAddr string) {
+func HTTPAccept(addr *string, serverAddr string, stop <-chan struct{}) {
 	var listenAddr string
 	if *addr == "" {
 		listenAddr = serverAddr
@@ -45,10 +44,23 @@ func HTTPAccept(addr *string, serverAddr string) {
 	if listenAddr[0] == ':' {
 		listenAddr = "0.0.0.0" + listenAddr
 	}
-	logger := log.New(os.Stdout, "[H00000]", log.LstdFlags, logLevel)
+	logger := newLogger("[H00000]")
 	logger.Info("HTTP proxy server started at", listenAddr)
 
+	go func() {
+		<-stop
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}()
+
 	if err := srv.ListenAndServe(); err != nil {
+		select {
+		case <-stop:
+			logger.Info("HTTP proxy server stopped")
+			return
+		default:
+		}
 		logger.Error(err)
 		return
 	}
@@ -60,7 +72,7 @@ func httpHandler(w http.ResponseWriter, req *http.Request) {
 		atomic.StoreUint32(&httpConnID, 0)
 		connID = 0
 	}
-	logger := log.New(os.Stdout, fmt.Sprintf("[H%05x]", connID), log.LstdFlags, logLevel)
+	logger := newLogger(fmt.Sprintf("[H%05x]", connID))
 	logger.Info(req.RemoteAddr, joinString("- \"", req.Method, " ", req.RequestURI, " ", req.Proto, "\""))
 
 	if req.Method == http.MethodConnect {
@@ -91,17 +103,28 @@ func handleConnect(logger *log.Logger, w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	dstHost, policy, fail, blocked := genPolicy(logger, originHost)
-	if fail {
+	port, err := strconv.Atoi(dstPort)
+	if err != nil {
+		logger.Error("Parse port", dstPort+":", err)
+		return
+	}
+
+	plan, err := PlanRequest(RequestContext{
+		Source: RequestSourceHTTP,
+		Host:   originHost,
+		Port:   port,
+	}, logger)
+	if err != nil {
 		http.Error(w, status500, http.StatusInternalServerError)
 		return
 	}
-	if blocked {
+	if plan.Blocked {
 		logger.Info("Connection blocked")
 		http.Error(w, status403, http.StatusForbidden)
 		return
 	}
 
+	policy := plan.Policy
 	logger.Info("Policy:", policy)
 
 	if policy.Mode == ModeBlock {
@@ -109,11 +132,7 @@ func handleConnect(logger *log.Logger, w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	if policy.Port != 0 && policy.Port != -1 {
-		dstPort = formatInt(policy.Port)
-	}
-
-	dest := net.JoinHostPort(dstHost, dstPort)
+	dest := plan.TargetAddress()
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
@@ -185,26 +204,25 @@ func forwardHTTPRequest(logger *log.Logger, w http.ResponseWriter, originReq *ht
 		}
 	}
 
-	var p Policy
-	if domainPolicy, exists := domainMatcher.Find(originHost); exists {
-		p = mergePolicies(domainPolicy, &defaultPolicy)
-	} else {
-		p = defaultPolicy
+	portNum, err := strconv.Atoi(port)
+	if err != nil {
+		logger.Error("Parse port", port+":", err)
+		http.Error(w, "400 Bad Request", http.StatusBadRequest)
+		return
 	}
 
-	if p.Host != nil && *p.Host != "" {
-		if (*p.Host)[0] != '^' {
-			_, ipPolicy, err := ipRedirect(logger, *p.Host)
-			if err != nil {
-				logger.Error("IP redirect:", err)
-				http.Error(w, status500, http.StatusInternalServerError)
-				return
-			}
-			if ipPolicy != nil {
-				p = mergePolicies(&p, ipPolicy, &defaultPolicy)
-			}
-		}
+	plan, err := PlanRequest(RequestContext{
+		Source:           RequestSourceHTTP,
+		Host:             originHost,
+		Port:             portNum,
+		DomainTargetMode: PreserveDomainTarget,
+	}, logger)
+	if err != nil {
+		logger.Error("Build dial plan:", err)
+		http.Error(w, status500, http.StatusInternalServerError)
+		return
 	}
+	p := plan.Policy
 
 	if p.HttpStatus != 0 && p.HttpStatus != -1 {
 		if p.HttpStatus == 301 || p.HttpStatus == 302 {
@@ -226,55 +244,9 @@ func forwardHTTPRequest(logger *log.Logger, w http.ResponseWriter, originReq *ht
 		return
 	}
 
-	dstHost := originHost
-	dstPort := port
-
-	if p.Host != nil && *p.Host != "" {
-		if *p.Host == "self" {
-			dstHost = originHost
-			logger.Info("Host:", dstHost)
-		} else if strings.HasPrefix(*p.Host, "^") {
-			dstHost = (*p.Host)[1:]
-		} else {
-			dstHost = *p.Host
-			if strings.HasPrefix(dstHost, tagPrefix) {
-				if dstHost, err = getFromIPPool(dstHost[1:]); err != nil {
-					logger.Error(err)
-					http.Error(w, status500, http.StatusInternalServerError)
-					return
-				}
-				logger.Info("Host:", *p.Host, "->", dstHost)
-			} else {
-				logger.Info("Host:", *p.Host)
-			}
-		}
-	}
-
-	if p.Port != 0 && p.Port != -1 {
-		dstPort = formatInt(p.Port)
-	}
-
-	disableRedirect := p.Host != nil && strings.HasPrefix(*p.Host, "^")
-	if !disableRedirect {
-		var ipPolicy *Policy
-		dstHost, ipPolicy, err = ipRedirect(logger, dstHost)
-		if err != nil {
-			logger.Error("IP redirect:", err)
-			http.Error(w, status500, http.StatusInternalServerError)
-			return
-		}
-		if ipPolicy != nil {
-			p = mergePolicies(&p, ipPolicy, &defaultPolicy)
-			if p.Mode == ModeBlock {
-				http.Error(w, status403, http.StatusForbidden)
-				return
-			}
-		}
-	}
-
 	outReq := originReq.Clone(context.Background())
 
-	targetAddr := net.JoinHostPort(dstHost, dstPort)
+	targetAddr := plan.TargetAddress()
 	outReq.URL.Host = targetAddr
 	outReq.Host = targetAddr
 

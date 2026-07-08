@@ -32,6 +32,7 @@ func (m *Mode) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
+	s = strings.ToLower(strings.TrimSpace(s))
 	switch s {
 	case "raw":
 		*m = ModeRaw
@@ -407,7 +408,62 @@ func mergePolicies(policies ...*Policy) Policy {
 	return merged
 }
 
+func applyPolicyDefaults(p Policy) Policy {
+	if p.Mode == ModeUnknown {
+		p.Mode = ModeDefault
+	}
+	if p.DNSMode == DNSModeUnknown {
+		p.DNSMode = DNSModeDefault
+	}
+	return p
+}
+
+type domainRouteClass uint8
+
+const (
+	domainRoutePlain domainRouteClass = iota
+	domainRouteRule
+	domainRouteGFW
+)
+
+var (
+	plainFallbackPolicy = Policy{Mode: ModeRaw}
+	gfwFallbackPolicy   = Policy{Mode: ModeTLSRF}
+)
+
+func classifyDomainRoute(domain string) domainRouteClass {
+	domain = strings.ToLower(domain)
+	if domain == "" {
+		return domainRoutePlain
+	}
+	if domainMatcher != nil {
+		if _, found := domainMatcher.Find(domain); found {
+			return domainRouteRule
+		}
+	}
+	if isGFWDomain(domain) {
+		return domainRouteGFW
+	}
+	return domainRoutePlain
+}
+
+func shouldUseFakeIP(domain string) bool {
+	switch classifyDomainRoute(domain) {
+	case domainRouteRule, domainRouteGFW:
+		return true
+	default:
+		return false
+	}
+}
+
 func genPolicy(logger *log.Logger, originHost string) (dstHost string, p Policy, failed bool, blocked bool) {
+	dstHost, p, failed, blocked, _, _ = genPolicyWithOptions(logger, originHost, true)
+	return
+}
+
+func genPolicyWithOptions(logger *log.Logger, originHost string, resolveDomain bool) (
+	dstHost string, p Policy, failed bool, blocked bool, matchedDomain bool, matchedIP bool,
+) {
 	var err error
 
 	if net.ParseIP(originHost) != nil {
@@ -415,76 +471,106 @@ func genPolicy(logger *log.Logger, originHost string) (dstHost string, p Policy,
 		dstHost, ipPolicy, err = ipRedirect(logger, originHost)
 		if err != nil {
 			logger.Error("IP redirect:", err)
-			return "", Policy{}, true, false
+			return "", Policy{}, true, false, false, false
 		}
 		if ipPolicy == nil {
-			p = defaultPolicy
+			p = mergePolicies(&plainFallbackPolicy, &defaultPolicy)
+		} else {
+			p = mergePolicies(ipPolicy, &defaultPolicy)
+			matchedIP = true
+		}
+		if p.Mode == ModeBlock {
+			return "", Policy{}, false, true, false, matchedIP
+		}
+		return
+	}
+
+	routeClass := classifyDomainRoute(originHost)
+	var domainPolicy *Policy
+	if routeClass == domainRouteRule {
+		var found bool
+		domainPolicy, found = domainMatcher.Find(originHost)
+		matchedDomain = found
+	}
+	if domainPolicy != nil {
+		if domainPolicy.Mode == ModeBlock {
+			return "", Policy{}, false, true, matchedDomain, false
+		}
+		p = mergePolicies(domainPolicy, &defaultPolicy)
+	} else if routeClass == domainRouteGFW {
+		matchedDomain = true
+		p = mergePolicies(&gfwFallbackPolicy, &defaultPolicy)
+	} else {
+		p = mergePolicies(&plainFallbackPolicy, &defaultPolicy)
+	}
+
+	skipIPRedirect := false
+	dstHost = originHost
+	if p.Host != nil {
+		hostValue := *p.Host
+		switch {
+		case hostValue == "", hostValue == "self":
+			dstHost = originHost
+		case hostValue == "^":
+			dstHost = originHost
+			skipIPRedirect = true
+		case strings.HasPrefix(hostValue, "^"):
+			dstHost = hostValue[1:]
+			skipIPRedirect = true
+		default:
+			dstHost = hostValue
+		}
+		logger.Debug("Host:", hostValue, "->", dstHost)
+	}
+
+	if strings.HasPrefix(dstHost, tagPrefix) {
+		if dstHost, err = getFromIPPool(dstHost[1:]); err != nil {
+			logger.Error(err)
+			return "", Policy{}, true, false, matchedDomain, matchedIP
+		}
+		logger.Debug("Host pool target:", dstHost)
+	}
+
+	if !skipIPRedirect && resolveDomain && net.ParseIP(dstHost) == nil {
+		resolvedFrom := dstHost
+		if rememberedIP, ok := lookupRecordedDNSIP(dstHost, p.DNSMode); ok {
+			dstHost = rememberedIP
+			logger.Debug("DNS(recorded):", resolvedFrom, "->", dstHost)
+		} else {
+			var cached bool
+			dstHost, cached, err = defaultResolver.Resolve(dstHost, p.DNSMode)
+			if err != nil {
+				logger.Error("Resolve", resolvedFrom+":", err)
+				return "", Policy{}, true, false, matchedDomain, matchedIP
+			}
+			if cached {
+				logger.Debug("DNS(cached):", resolvedFrom, "->", dstHost)
+			} else {
+				logger.Debug("DNS:", resolvedFrom, "->", dstHost)
+			}
+		}
+	}
+
+	if skipIPRedirect || net.ParseIP(dstHost) == nil {
+		return dstHost, p, false, false, matchedDomain, matchedIP
+	}
+
+	var ipPolicy *Policy
+	dstHost, ipPolicy, err = ipRedirect(logger, dstHost)
+	if err != nil {
+		logger.Debug("IP redirect:", err)
+		return "", Policy{}, true, false, matchedDomain, matchedIP
+	}
+	if ipPolicy != nil {
+		matchedIP = true
+		if domainPolicy != nil {
+			p = mergePolicies(domainPolicy, ipPolicy, &defaultPolicy)
 		} else {
 			p = mergePolicies(ipPolicy, &defaultPolicy)
 		}
 		if p.Mode == ModeBlock {
-			return "", Policy{}, false, true
-		}
-		return
-	}
-	domainPolicy, found := domainMatcher.Find(originHost)
-	if found {
-		if domainPolicy.Mode == ModeBlock {
-			return "", Policy{}, false, true
-		}
-		p = mergePolicies(domainPolicy, &defaultPolicy)
-	} else {
-		p = defaultPolicy
-	}
-	var cached bool
-	disableRedirect := p.Host != nil && strings.HasPrefix(*p.Host, "^")
-	if p.Host == nil || *p.Host == "" || *p.Host == "^" {
-		dstHost, cached, err = dnsResolve(originHost, p.DNSMode)
-		if err != nil {
-			logger.Error("Resolve", originHost+":", err)
-			return "", Policy{}, true, false
-		}
-		if cached {
-			logger.Info("DNS(cached):", originHost, "->", dstHost)
-		} else {
-			logger.Info("DNS:", originHost, "->", dstHost)
-		}
-	} else if *p.Host == "self" {
-		dstHost = originHost
-		logger.Info("Host:", dstHost)
-	} else {
-		if disableRedirect {
-			dstHost = (*p.Host)[1:]
-		} else {
-			dstHost = *p.Host
-		}
-		if strings.HasPrefix(dstHost, tagPrefix) {
-			if dstHost, err = getFromIPPool(dstHost[1:]); err != nil {
-				logger.Error(err)
-				return "", Policy{}, true, false
-			}
-			logger.Info("Host:", *p.Host, "->", dstHost)
-		} else {
-			logger.Info("Host:", *p.Host)
+			return "", Policy{}, false, true, matchedDomain, matchedIP
 		}
 	}
-	if !disableRedirect {
-		var ipPolicy *Policy
-		dstHost, ipPolicy, err = ipRedirect(logger, dstHost)
-		if err != nil {
-			logger.Info("IP redirect:", err)
-			return "", Policy{}, true, false
-		}
-		if ipPolicy != nil {
-			if found {
-				p = mergePolicies(domainPolicy, ipPolicy, &defaultPolicy)
-			} else {
-				p = mergePolicies(ipPolicy, &defaultPolicy)
-			}
-			if p.Mode == ModeBlock {
-				return "", Policy{}, false, true
-			}
-		}
-	}
-	return
+	return dstHost, p, false, false, matchedDomain, matchedIP
 }

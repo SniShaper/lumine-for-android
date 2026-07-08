@@ -88,9 +88,7 @@ func StartLumine(fd int, configName string) string {
 	clearLogsLocked()
 	logMu.Unlock()
 
-	// Initialize logging redirection
 	mainLogger.Info("Lumine mobile starting...")
-	lumine.SetLogWriter(&LogWriter{})
 
 	configPath := filepath.Join(workingDir, configName+".json")
 
@@ -98,6 +96,13 @@ func StartLumine(fd int, configName string) string {
 	if err != nil {
 		return fmt.Sprintf("load config error: %v", err)
 	}
+
+	// LoadConfig applies conf.LogOutput via setLogOutput, which itself
+	// calls SetLogWriter - so the redirect into the in-app log ring
+	// buffer must happen after LoadConfig, not before, or it gets
+	// clobbered back to os.Stdout by the config's (usually unset,
+	// defaulting to stdout) log_output field.
+	lumine.SetLogWriter(&LogWriter{})
 
 	engine.SetCustomProxy(&LumineProxy{})
 

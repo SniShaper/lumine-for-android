@@ -17,10 +17,10 @@ import com.moi.lumine.ui.ConfigViewModel
 fun GlobalSettingsScreen(navController: NavController, viewModel: ConfigViewModel) {
     val config by viewModel.currentConfig.collectAsState()
 
-    var dnsAddr by remember { mutableStateOf(config.dnsAddr) }
+    var dnsAddr by remember { mutableStateOf(config.dns.addr) }
     var logLevel by remember { mutableStateOf(config.logLevel) }
-    LaunchedEffect(config.dnsAddr, config.logLevel) {
-        dnsAddr = config.dnsAddr
+    LaunchedEffect(config.dns.addr, config.logLevel) {
+        dnsAddr = config.dns.addr
         logLevel = config.logLevel
     }
 
@@ -31,7 +31,7 @@ fun GlobalSettingsScreen(navController: NavController, viewModel: ConfigViewMode
                 actions = {
                     IconButton(onClick = {
                         val updatedConfig = config.copy(
-                            dnsAddr = dnsAddr,
+                            dns = config.dns.copy(addr = dnsAddr),
                             logLevel = logLevel
                         )
                         viewModel.updateConfig(updatedConfig)

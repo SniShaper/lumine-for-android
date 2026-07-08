@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/lzpls/enimul/internal/dial"
 	F "github.com/lzpls/enimul/internal/fmt"
@@ -35,7 +36,7 @@ func getHTTPConnID() uint32 {
 	return httpConnID
 }
 
-func HTTPAccept(addr *string, serverAddr string) {
+func HTTPAccept(addr *string, serverAddr string, stop <-chan struct{}) {
 	var listenAddr string
 	if *addr == "" {
 		listenAddr = serverAddr
@@ -57,9 +58,20 @@ func HTTPAccept(addr *string, serverAddr string) {
 		return
 	}
 	logger.Info("HTTP proxy server started at ", ln.Addr())
-	if err := http.Serve(ln, http.HandlerFunc(httpHandler)); err != nil {
+
+	srv := &http.Server{Handler: http.HandlerFunc(httpHandler)}
+	go func() {
+		<-stop
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}()
+
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		logger.Error("HTTP serve: ", err)
+		return
 	}
+	logger.Info("HTTP proxy server stopped")
 }
 
 func httpHandler(w http.ResponseWriter, req *http.Request) {

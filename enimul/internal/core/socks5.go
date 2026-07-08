@@ -23,8 +23,7 @@ var (
 
 const maxConnID = 0xFFFFF
 
-func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
-	defer func() { done <- struct{}{} }()
+func SOCKS5Accept(addr *string, serverAddr string, stop <-chan struct{}) {
 	var listenAddr string
 	if *addr == "" {
 		listenAddr = serverAddr
@@ -47,6 +46,11 @@ func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
 	}
 	logger.Info("SOCKS5 proxy server started at ", ln.Addr())
 
+	go func() {
+		<-stop
+		ln.Close()
+	}()
+
 	var connID uint32
 	for {
 		conn, err := ln.Accept()
@@ -57,6 +61,12 @@ func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
 			}
 			go socks5Handler(conn, connID)
 			continue
+		}
+		select {
+		case <-stop:
+			logger.Info("SOCKS5 proxy server stopped")
+			return
+		default:
 		}
 		if ne, ok := err.(net.Error); ok && ne.Temporary() {
 			logger.Warn("Accept failed: ", err)

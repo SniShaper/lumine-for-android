@@ -48,10 +48,10 @@ func main() {
 
 	startPprofServer()
 
-	done := make(chan struct{})
-	go core.SOCKS5Accept(addr, socks5Addr, done)
-	core.HTTPAccept(hAddr, httpAddr)
-	<-done
+	stop := make(chan struct{})
+	go core.SOCKS5Accept(addr, socks5Addr, stop)
+	go core.HTTPAccept(hAddr, httpAddr, stop)
+	select {}
 }
 
 func showLicense() {

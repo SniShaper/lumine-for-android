@@ -3,7 +3,8 @@ param(
     [string]$JavaHome = "D:\Android\jbr",
     [string]$Output = "android\libs\LumineCore.aar",
     [int]$AndroidApi = 24,
-    [string]$Package = "./mobile"
+    [string]$Package = "./mobile",
+    [string]$ModuleDir = "lumine"
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,17 +56,22 @@ Ensure-Junction -Path (Join-Path $AndroidHome "platform-tools") -Target "D:\sdk\
 Ensure-Junction -Path (Join-Path $AndroidHome "build-tools") -Target "D:\sdk\build-tools"
 Ensure-Junction -Path "D:\sdk\platforms\android-36" -Target "D:\sdk\platforms\android-36.1"
 
-$goModBackup = Backup-File "go.mod"
-$goSumBackup = Backup-File "go.sum"
+# Resolve before switching into $ModuleDir so relative paths stay anchored
+# to the caller's working directory (the repo root), not the Go module dir.
+$resolvedOutput = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Output))
 
+Push-Location $ModuleDir
 try {
+    $goModBackup = Backup-File "go.mod"
+    $goSumBackup = Backup-File "go.sum"
+
     $env:ANDROID_HOME = $AndroidHome
     $env:ANDROID_SDK_ROOT = $AndroidHome
     $env:JAVA_HOME = $JavaHome
     $env:GOFLAGS = "-mod=mod"
     $env:Path = "$JavaHome\bin;$AndroidHome\platform-tools;$env:Path"
 
-    $outDir = Split-Path -Parent $Output
+    $outDir = Split-Path -Parent $resolvedOutput
     if ($outDir -and !(Test-Path $outDir)) {
         New-Item -ItemType Directory -Path $outDir | Out-Null
     }
@@ -76,7 +82,7 @@ try {
         "-androidapi"
         "$AndroidApi"
         "-o"
-        $Output
+        $resolvedOutput
         $Package
     )
     & gomobile @gomobileArgs
@@ -87,4 +93,5 @@ try {
 finally {
     Restore-File -Backup $goModBackup -Destination "go.mod"
     Restore-File -Backup $goSumBackup -Destination "go.sum"
+    Pop-Location
 }

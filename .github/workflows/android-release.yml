@@ -44,7 +44,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: lumine/go.mod
           cache: true
 
       - name: Set up Java
@@ -96,20 +96,22 @@ jobs:
 
       - name: Download Go dependencies
         shell: bash
+        working-directory: lumine
         env:
           GOFLAGS: -mod=mod
         run: go mod download
 
       - name: Build Android core AAR
         shell: bash
+        working-directory: lumine
         env:
           GOFLAGS: -mod=mod
         run: |
-          mkdir -p android/app/libs
+          mkdir -p ../android/app/libs
           gomobile bind \
             -target=android \
             -androidapi "${GOMOBILE_ANDROID_API}" \
-            -o android/app/libs/LumineCore.aar \
+            -o ../android/app/libs/LumineCore.aar \
             -ldflags="-s -w -buildid=" -trimpath \
             ./mobile
 

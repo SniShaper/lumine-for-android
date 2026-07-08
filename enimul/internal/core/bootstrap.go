@@ -8,14 +8,16 @@ import (
 	E "github.com/lzpls/enimul/internal/errors"
 )
 
-// bootstrapDNSTimeout and bootstrapCacheTTL are fixed rather than
-// config-driven: bootstrap resolution is a one-off fallback for hostnames
-// (e.g. a DoH server's own host) that can't rely on the OS resolver being
-// reachable, notably inside Android's VPN tun process.
-const (
-	bootstrapDNSTimeout = 10 * time.Second
-	bootstrapCacheTTL   = 5 * time.Minute
-)
+// bootstrapDNSTimeout is fixed rather than config-driven: bootstrap
+// resolution is a one-off fallback for hostnames (e.g. a DoH server's own
+// host) that can't rely on the OS resolver being reachable, notably inside
+// Android's VPN tun process.
+const bootstrapDNSTimeout = 10 * time.Second
+
+// reverseMappingTTL is the shared default lifetime for cache entries that
+// don't have a more specific TTL of their own (bootstrap resolutions,
+// the general IP->domain reverse cache in resolver.go).
+const reverseMappingTTL = 5 * time.Minute
 
 var bootstrapLookupIP = func(ctx context.Context, host string) ([]net.IPAddr, error) {
 	return net.DefaultResolver.LookupIPAddr(ctx, host)
@@ -45,7 +47,7 @@ func resolveBootstrapHost(host string) (string, error) {
 	}
 
 	if dnsCache != nil {
-		dnsCache.AddWithLifetime(host, ip, bootstrapCacheTTL)
+		dnsCache.AddWithLifetime(host, ip, reverseMappingTTL)
 	}
 	return ip, nil
 }

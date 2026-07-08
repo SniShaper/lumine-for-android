@@ -156,3 +156,41 @@ func isGFWDomain(domain string) bool {
 	_, matched := gfwDomainMatcher.Find(domain)
 	return matched
 }
+
+type domainRouteClass uint8
+
+const (
+	domainRoutePlain domainRouteClass = iota
+	domainRouteRule
+	domainRouteGFW
+)
+
+var (
+	plainFallbackPolicy = Policy{Mode: ModeRaw}
+	gfwFallbackPolicy   = Policy{Mode: ModeTLSRF}
+)
+
+func classifyDomainRoute(domain string) domainRouteClass {
+	domain = strings.ToLower(domain)
+	if domain == "" {
+		return domainRoutePlain
+	}
+	if domainMatcher != nil {
+		if _, found := domainMatcher.Find(domain); found {
+			return domainRouteRule
+		}
+	}
+	if isGFWDomain(domain) {
+		return domainRouteGFW
+	}
+	return domainRoutePlain
+}
+
+func shouldUseFakeIP(domain string) bool {
+	switch classifyDomainRoute(domain) {
+	case domainRouteRule, domainRouteGFW:
+		return true
+	default:
+		return false
+	}
+}

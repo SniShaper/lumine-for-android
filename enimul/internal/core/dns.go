@@ -157,6 +157,10 @@ func setDNS(c DNSConfig) error {
 		if err != nil {
 			return E.WithStr("init DNS cache", err)
 		}
+		ipDomainCache, err = freelru.NewSharded[string, string](c.CacheCapacity, hashStringXXHASH)
+		if err != nil {
+			return E.WithStr("init ip-domain cache", err)
+		}
 	}
 
 	if c.EDNS0Subnet != "" {

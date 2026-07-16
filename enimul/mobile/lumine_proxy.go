@@ -5,22 +5,19 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"sync/atomic"
 	"time"
 
-	"github.com/miekg/dns"
 	lumine "github.com/lzpls/enimul/internal/core"
+	F "github.com/lzpls/enimul/internal/fmt"
 	"github.com/lzpls/enimul/internal/log"
+	"github.com/miekg/dns"
 	"github.com/xjasonlyu/tun2socks/v2/metadata"
 	"github.com/xjasonlyu/tun2socks/v2/proxy/proto"
 )
 
 type LumineProxy struct{}
 
-var (
-	tcpDialID uint32
-	udpDialID uint32
-)
+var tcpDialID, udpDialID lumine.Counter
 
 func (p *LumineProxy) Addr() string {
 	return "lumine"
@@ -36,7 +33,7 @@ func (p *LumineProxy) DialContext(ctx context.Context, m *metadata.Metadata) (ne
 	}
 
 	originHost := m.DstIP.String()
-	logger := lumine.NewSessionLogger(fmt.Sprintf("[T%05x]", nextID(&tcpDialID)))
+	logger := lumine.NewSessionLogger(F.ConnIDToHex5('T', tcpDialID.Next()))
 	if lumine.IsVPNDNSAddress(originHost, int(m.DstPort)) {
 		logger.Debug("Hijacking TCP DNS for", net.JoinHostPort(originHost, fmt.Sprintf("%d", m.DstPort)))
 		return newLocalDNSTCPConn(logger)
@@ -75,7 +72,7 @@ func (p *LumineProxy) DialContext(ctx context.Context, m *metadata.Metadata) (ne
 }
 
 func (p *LumineProxy) DialUDP(m *metadata.Metadata) (net.PacketConn, error) {
-	logger := lumine.NewSessionLogger(fmt.Sprintf("[U%05x]", nextID(&udpDialID)))
+	logger := lumine.NewSessionLogger(F.ConnIDToHex5('U', udpDialID.Next()))
 	if m == nil || !m.DstIP.IsValid() {
 		logger.Error("Invalid UDP metadata:", m)
 		return nil, fmt.Errorf("invalid udp metadata: %+v", m)
@@ -183,15 +180,6 @@ func joinPlanLogMessage(network string, plan lumine.DialPlan, target string) str
 		}
 	}
 	return fmt.Sprintf("%s %s -> %s mode=%s", network, origin, target, plan.Policy.Mode)
-}
-
-func nextID(counter *uint32) uint32 {
-	id := atomic.AddUint32(counter, 1)
-	if id > 0xFFFFF {
-		atomic.StoreUint32(counter, 0)
-		return 0
-	}
-	return id
 }
 
 func summarizeDNSPacket(payload []byte) string {

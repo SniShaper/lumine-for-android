@@ -7,7 +7,6 @@ import (
 	"maps"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/lzpls/enimul/internal/dial"
@@ -21,20 +20,7 @@ const (
 	status502 = "502 Bad Gateway"
 )
 
-var (
-	httpConnID      uint32
-	httpConnIDMutex sync.Mutex
-)
-
-func getHTTPConnID() uint32 {
-	httpConnIDMutex.Lock()
-	defer httpConnIDMutex.Unlock()
-	httpConnID++
-	if httpConnID > maxConnID {
-		httpConnID = 1
-	}
-	return httpConnID
-}
+var httpConnID Counter
 
 func HTTPAccept(addr *string, serverAddr string, stop <-chan struct{}) {
 	var listenAddr string
@@ -75,7 +61,7 @@ func HTTPAccept(addr *string, serverAddr string, stop <-chan struct{}) {
 }
 
 func httpHandler(w http.ResponseWriter, req *http.Request) {
-	logger := newLogger(F.ConnIDToHex5('H', getHTTPConnID()))
+	logger := newLogger(F.ConnIDToHex5('H', httpConnID.Next()))
 	logger.Info(req.RemoteAddr, " - \"", req.Method, " ", req.RequestURI, " ", req.Proto, "\"")
 
 	if req.Method == http.MethodConnect {

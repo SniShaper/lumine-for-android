@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">保持 Lumine 代理服务在后台持续运行。开启后，即使从最近任务中划掉应用，代理也会自动恢复。</string>
+</resources>

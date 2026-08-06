@@ -123,6 +123,9 @@ dependencies {
     implementation 'androidx.compose.material:material-icons-extended'
     implementation 'com.google.android.material:material:1.11.0'
     
+    // Background keep-alive
+    implementation 'androidx.work:work-runtime-ktx:2.9.0'
+    
     // JSON & Networking
     implementation "com.squareup.moshi:moshi-kotlin:1.15.1"
     

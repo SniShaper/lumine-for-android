@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
+import com.moi.lumine.keepalive.KeepAlive
 import com.moi.lumine.repository.ConfigRepository
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +41,11 @@ class LumineVpnService : VpnService() {
     @Volatile private var coreStopIssued = false
     @Volatile private var lastWatchdogRecoveryAt = 0L
 
+    override fun onCreate() {
+        super.onCreate()
+        isServiceRunning = true
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == ACTION_STOP) {
@@ -52,6 +58,17 @@ class LumineVpnService : VpnService() {
         val requestedConfig = intent?.getStringExtra(EXTRA_CONFIG_NAME)?.takeIf { it.isNotBlank() }
         val shouldRecover = requestedConfig == null && repository.shouldVpnBeRunning()
         val targetConfig = requestedConfig ?: if (shouldRecover) repository.getLastRunningConfigName() else null
+
+        // 恢复路径：VPN 授权丢失（划掉重启/系统重置）时，拉起主界面重新授权，
+        // 不要在这里 startVpn()，否则 establish() 抛 SecurityException 会清掉保活标志
+        if (shouldRecover && VpnService.prepare(this) != null) {
+            Log.i("LumineVpn", "VPN permission lost, requesting re-authorization")
+            // startForegroundService 起的服务必须在 5 秒内 startForeground，否则系统杀服务
+            startForeground(NOTIFICATION_ID, buildNotification("等待 VPN 授权"))
+            VpnRuntimeState.setStatus("authorizing", "需要重新授权 VPN 权限")
+            requestVpnPermissionFromUi()
+            return START_STICKY
+        }
 
         if (targetConfig == null) {
             Log.i("LumineVpn", "Ignoring sticky restart without persisted running state")
@@ -71,6 +88,18 @@ class LumineVpnService : VpnService() {
         }
         startVpn()
         return START_STICKY
+    }
+
+    private fun requestVpnPermissionFromUi() {
+        try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(EXTRA_REQUEST_VPN_PERMISSION, true)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.w("LumineVpn", "无法打开授权页面: ${e.message}")
+        }
     }
 
     private fun startVpn() {
@@ -134,8 +163,9 @@ class LumineVpnService : VpnService() {
                         }
                         val error = Mobile.startLumine(fd.toLong(), configName)
                         if (error.isNotEmpty()) {
+                            // Go 引擎失败时可能已自行关闭 fd，此处绝不 close，避免 fdsan 崩溃；泄漏由进程回收
+                            coreTunFd = null
                             coreOwnsTunFd = false
-                            closePendingTunFd()
                             Log.e("LumineVpn", "Go core failed: $error")
                             updateNotification("启动失败: $error")
                             VpnRuntimeState.setActive(false)
@@ -239,7 +269,26 @@ class LumineVpnService : VpnService() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // 用户要求：划掉后台 → 完全停止服务（停核心 + 移除前台通知，UI/通知状态一致）。
+        // 保活组件（无障碍/闹钟/JobScheduler）随后拉起新实例，recover 路径会重新校验 VPN 授权。
+        if (KeepAlive.shouldRun(this)) {
+            KeepAlive.scheduleAll(this)
+            stopWatchdog()
+            stopLogPump()
+            performCoreShutdownIfNeeded()
+            runCatching {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+            stopSelf()
+            VpnRuntimeState.setActive(false)
+            VpnRuntimeState.setStatus("idle", "点此启动服务")
+        }
+    }
+
     override fun onDestroy() {
+        isServiceRunning = false
         stopWatchdog()
         stopLogPump()
         performCoreShutdownIfNeeded()
@@ -354,6 +403,8 @@ class LumineVpnService : VpnService() {
     private fun closePendingTunFd() {
         val fd = coreTunFd ?: return
         coreTunFd = null
+        // 仅在 Go 引擎未接管时调用（startLumine 之前）。接管后所有权归 Go 引擎，
+        // 绝不在此 close，否则 fdsan 检测到双重关闭会 SIGABRT 崩溃。
         runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
     }
 
@@ -473,9 +524,13 @@ class LumineVpnService : VpnService() {
     companion object {
         private const val ACTION_STOP = "STOP"
         private const val EXTRA_CONFIG_NAME = "CONFIG_NAME"
+        const val EXTRA_REQUEST_VPN_PERMISSION = "REQUEST_VPN_PERMISSION"
         private const val NOTIFICATION_CHANNEL_ID = "lumine_vpn"
         private const val NOTIFICATION_ID = 1001
         private const val WATCHDOG_INTERVAL_MS = 5_000L
         private const val WATCHDOG_RECOVERY_COOLDOWN_MS = 15_000L
+
+        @Volatile
+        var isServiceRunning = false
     }
 }

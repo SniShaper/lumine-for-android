@@ -28,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.moi.lumine.repository.ConfigRepository
 import com.moi.lumine.ui.ConfigViewModel
 import com.moi.lumine.ui.Screen
 import com.moi.lumine.ui.screens.*
@@ -46,14 +47,17 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             LumineTheme {
-                MainContainer()
+                MainContainer(
+                    requestVpnPermission = intent
+                        ?.getBooleanExtra(LumineVpnService.EXTRA_REQUEST_VPN_PERMISSION, false) == true
+                )
             }
         }
     }
 }
 
 @Composable
-fun MainContainer() {
+fun MainContainer(requestVpnPermission: Boolean = false) {
     val context = LocalContext.current
     val navController = rememberNavController()
     val viewModel: ConfigViewModel = viewModel()
@@ -80,6 +84,25 @@ fun MainContainer() {
         } else {
             VpnRuntimeState.setStatus("idle", "VPN 权限未授予")
             toggleLocked = false
+        }
+    }
+
+    // 打开应用时自动恢复：带授权请求标记，或保活标记还在但服务已死
+    LaunchedEffect(Unit) {
+        val shouldAutoRecover = requestVpnPermission ||
+            (ConfigRepository(context).shouldVpnBeRunning() && !LumineVpnService.isServiceRunning)
+        if (!shouldAutoRecover) return@LaunchedEffect
+
+        val vpnIntent = VpnService.prepare(context)
+        if (vpnIntent != null) {
+            VpnRuntimeState.setStatus("authorizing", "需要重新授权 VPN 权限")
+            vpnRequestLauncher.launch(vpnIntent)
+        } else {
+            VpnRuntimeState.setStatus("starting", "正在恢复代理")
+            val intent = Intent(context, LumineVpnService::class.java).apply {
+                putExtra("CONFIG_NAME", viewModel.selectedConfigName.value)
+            }
+            ContextCompat.startForegroundService(context, intent)
         }
     }
 
@@ -149,6 +172,9 @@ fun MainContainer() {
             }
             composable(Screen.Settings.route) { GlobalSettingsScreen(navController, viewModel) }
             composable(Screen.Logs.route) { LogScreen(navController, viewModel) }
+            composable(Screen.KeepAlive.route) {
+                com.moi.lumine.keepalive.KeepAliveGuideScreen(navController)
+            }
         }
     }
 }

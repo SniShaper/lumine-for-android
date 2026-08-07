@@ -1,10 +1,19 @@
 buildscript {
     ext.kotlin_version = "1.9.23"
     repositories {
+        // 1. 阿里云镜像（包含 Google、Central、Public、Gradle-Plugin）
         maven { url 'https://maven.aliyun.com/repository/google' }
         maven { url 'https://maven.aliyun.com/repository/central' }
         maven { url 'https://maven.aliyun.com/repository/public' }
         maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+
+        // 2. 腾讯云镜像（聚合仓库，包含 Google、Central 等）
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+
+        // 3. 清华镜像（主要同步 Maven Central）
+        maven { url 'https://mirrors.tuna.tsinghua.edu.cn/maven/' }
+
+        // 4. 官方仓库（镜像全部失败时最后尝试）
         google()
         mavenCentral()
     }
@@ -16,11 +25,16 @@ buildscript {
 
 allprojects {
     repositories {
+        // 同样的顺序：镜像优先，官方兜底
         maven { url 'https://maven.aliyun.com/repository/google' }
         maven { url 'https://maven.aliyun.com/repository/central' }
         maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+        maven { url 'https://mirrors.tuna.tsinghua.edu.cn/maven/' }
+
         google()
         mavenCentral()
+
         flatDir {
             dirs '../libs'
         }

@@ -104,7 +104,7 @@ func sendWithNoise(
 		return E.WithStr("raw control", rawCtrlErr)
 	}
 	if transmitFileErr != nil && transmitFileErr != windows.ERROR_IO_PENDING {
-		return E.WithStr("call TransmitFile", err)
+		return E.WithStr("call TransmitFile", transmitFileErr)
 	}
 
 	time.Sleep(fakeSleep)

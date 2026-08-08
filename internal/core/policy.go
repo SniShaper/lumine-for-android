@@ -551,8 +551,8 @@ func isIPv6(ip string) bool {
 	return strings.Contains(ip, ":")
 }
 
-func getIPPolicy(ip string) (*Policy, bool) {
-	if isIPv6(ip) {
+func getIPPolicy(ip netip.Addr) (*Policy, bool) {
+	if ip.Unmap().Is6() {
 		return ipv6Matcher.Find(ip)
 	}
 	return ipMatcher.Find(ip)
@@ -811,16 +811,19 @@ func genPolicy(logger log.Logger, originHost string, isIP, returnWhenDomainNotFo
 	return
 }
 
-func ipRedirect(logger log.Logger, ip string) (string, *Policy, error) {
+func ipRedirect(logger log.Logger, host string) (string, *Policy, error) {
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return host, nil, nil
+	}
 	policy, exists := getIPPolicy(ip)
 	if !exists {
-		return ip, nil, nil
+		return host, nil, nil
 	}
 	if policy.MapTo == "" || policy.MapTo == unsetString {
-		return ip, policy, nil
+		return host, policy, nil
 	}
 	mapTo := policy.MapTo
-	var err error
 	if strings.HasPrefix(mapTo, ipPoolTagPrefix) {
 		if mapTo, err = getFromIPPool(mapTo[1:]); err != nil {
 			return "", nil, err
@@ -831,18 +834,13 @@ func ipRedirect(logger log.Logger, ip string) (string, *Policy, error) {
 			return "", nil, err
 		}
 	}
-	if logger != nil && ip != mapTo {
-		logger.Info("Redirect: ", ip, " -> ", mapTo)
+	if logger != nil && host != mapTo {
+		logger.Info("Redirect: ", host, " -> ", mapTo)
 	}
 	return mapTo, policy, nil
 }
 
-func transformIP(ipStr string, targetNetStr string) (string, error) {
-	ip, err := netip.ParseAddr(ipStr)
-	if err != nil {
-		return "", E.New("invalid IP")
-	}
-
+func transformIP(ip netip.Addr, targetNetStr string) (string, error) {
 	prefix, err := netip.ParsePrefix(targetNetStr)
 	if err != nil {
 		return "", E.WithStr("invalid target network", err)

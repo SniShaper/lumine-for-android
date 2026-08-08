@@ -125,7 +125,7 @@ func SetLocalAddr(o BindingOption) error {
 				} else {
 					selected, ok = interfaces.find(zone)
 					if !ok {
-						return nil, nil, "", E.New("interface not found: " + o.Zone)
+						return nil, nil, "", E.New("interface not found: " + zone)
 					}
 				}
 				return selected.ipv4, selected.ipv6, selected.name, nil

@@ -12,7 +12,6 @@ import (
 type networkInterface struct {
 	index   int
 	name    string
-	gateway string
 	ipv4    net.IP
 	ipv6    net.IP
 }
@@ -67,7 +66,6 @@ func getFilteredInterfaces() (networkInterfaces, error) {
 		interfaces = append(interfaces, networkInterface{
 			index:   iface.Index,
 			name:    iface.Name,
-			gateway: getGatewayForInterface(iface.Index),
 			ipv4:    ipv4,
 			ipv6:    ipv6,
 		})
@@ -99,12 +97,12 @@ func (ifaces networkInterfaces) autoSelect(preferredPrefix netip.Prefix) (*netwo
 		}
 	}
 	for _, iface := range ifaces {
-		if iface.gateway != "" && iface.ipv4 != nil && iface.ipv4.IsPrivate() {
+		if iface.ipv4 != nil && iface.ipv4.IsPrivate() {
 			return &iface, true
 		}
 	}
 	for _, iface := range ifaces {
-		if iface.gateway != "" && iface.ipv4 != nil {
+		if iface.ipv4 != nil {
 			return &iface, true
 		}
 	}
@@ -114,11 +112,7 @@ func (ifaces networkInterfaces) autoSelect(preferredPrefix netip.Prefix) (*netwo
 func (ifaces networkInterfaces) manualSelect() *networkInterface {
 	fmt.Println("Avalable Interfaces:")
 	for i, iface := range ifaces {
-		msg := F.Concat("[", i, "] ", iface.name)
-		if iface.gateway != "" {
-			msg += " via " + iface.gateway
-		}
-		msg += ":"
+		msg := F.Concat("[", i, "] ", iface.name, ":")
 		if iface.ipv4 != nil {
 			msg += " ipv4=" + iface.ipv4.String()
 		}

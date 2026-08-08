@@ -51,15 +51,15 @@ func (lvl *Level) UnmarshalJSON(raw []byte) error {
 func appendLevel(b []byte, lvl Level) []byte {
 	switch lvl {
 	case LevelTrace:
-		return append(b, "TRACE "...)
+		return append(b, "TRACE"...)
 	case LevelDebug:
-		return append(b, "DEBUG "...)
+		return append(b, "DEBUG"...)
 	case LevelInfo:
-		return append(b, "INFO  "...)
+		return append(b, "INFO"...)
 	case LevelWarn:
-		return append(b, "WARN  "...)
+		return append(b, "WARN"...)
 	case LevelError:
-		return append(b, "ERROR "...)
+		return append(b, "ERROR"...)
 	case Disabled:
 		panic("appendLevel: unexpected Disabled log level")
 	}

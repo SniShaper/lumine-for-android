@@ -1,8 +1,9 @@
 {
   "log_level": "INFO",
   "log_output": "stdout",
-  "socks5_address": "127.0.0.1:1080",
-  "http_address": "127.0.0.1:1225",
+  "socks5_address": "localhost:1080",
+  "http_address": "localhost:1225",
+  "sniproxy_address": "",
   "outbound_binding": {
     "enable_for_android": false,
     "method": "off",

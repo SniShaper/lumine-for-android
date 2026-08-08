@@ -90,6 +90,10 @@ func sendRecords(conn net.Conn, clientHello []byte,
 					if err := sendWithOOB(conn, chunk[:l-1], chunk[l-1]); err != nil {
 						return E.WithStr("oob 1", err)
 					}
+				} else {
+					if _, err := conn.Write(chunk); err != nil {
+						return E.WithStr("write record 1", err)
+					}
 				}
 			} else if i == 1 && oobex {
 				if err := sendWithOOB(conn, chunk, 0x0); err != nil {
@@ -140,10 +144,8 @@ func sendRecords(conn net.Conn, clientHello []byte,
 			if err := sendWithOOB(conn, merged[start:end], 0x0); err != nil {
 				return E.WithStr("oob", err)
 			}
-		} else {
-			if _, err := conn.Write(merged[start:end]); err != nil {
-				return E.WithStr("write segment "+strconv.Itoa(i+1), err)
-			}
+		} else if _, err := conn.Write(merged[start:end]); err != nil {
+			return E.WithStr("write segment "+strconv.Itoa(i+1), err)
 		}
 		if err := waitForAck(waitForAckEnabled, conn, interval); err != nil {
 			return err

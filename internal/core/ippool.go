@@ -16,9 +16,10 @@ import (
 	E "github.com/lzpls/enimul/internal/errors"
 	F "github.com/lzpls/enimul/internal/fmt"
 	"github.com/lzpls/enimul/internal/log"
+	"github.com/lzpls/enimul/internal/orderedmap"
 )
 
-var ipPools map[string]*IPPool
+var ipPools *orderedmap.Map[*IPPool]
 
 const (
 	defaultTimeout        = 1 * time.Second
@@ -52,7 +53,7 @@ type IPPool struct {
 
 	scanMu  sync.Mutex
 	sem     chan struct{}
-	counter uint32
+	counter atomic.Uint32
 }
 
 func (p *IPPool) UnmarshalJSON(b []byte) error {
@@ -214,8 +215,8 @@ func (p *IPPool) scan() {
 	for i := range p.ips {
 		wg.Go(func() {
 			p.sem <- struct{}{}
+			defer func() { <-p.sem }()
 			latency, loss := p.testIP(i)
-			<-p.sem
 			results <- ipResult{i, latency, loss}
 		})
 	}
@@ -329,7 +330,7 @@ func (p *IPPool) Get() string {
 	total := p.totalWeight
 	p.mu.RUnlock()
 
-	current := atomic.AddUint32(&p.counter, 1) - 1
+	current := p.counter.Add(1) - 1
 	target := int(current) % total
 	acc := 0
 	for i := range validCount {
@@ -342,10 +343,10 @@ func (p *IPPool) Get() string {
 }
 
 func getFromIPPool(tag string) (ipStr string, err error) {
-	if len(ipPools) == 0 {
+	if ipPools == nil || ipPools.Len() == 0 {
 		return "", E.New("no ip pools")
 	}
-	ipPool, exists := ipPools[tag]
+	ipPool, exists := ipPools.Get(tag)
 	if !exists {
 		return "", E.New("ip pool " + tag + " does not exist")
 	}

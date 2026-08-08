@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"runtime"
 	"time"
 
 	E "github.com/lzpls/enimul/internal/errors"
-	"github.com/lzpls/enimul/internal/platform"
 )
 
 type Method uint8
@@ -79,7 +79,7 @@ func (o *BindingOption) UnmarshalJSON(data []byte) (err error) {
 	if err = json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
-	if !platform.IsAndroid || tmp.EnableForAndroid {
+	if runtime.GOOS != "android" || tmp.EnableForAndroid {
 		o.Method = tmp.Method
 	}
 	switch o.Method {

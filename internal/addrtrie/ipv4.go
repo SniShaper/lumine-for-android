@@ -80,16 +80,11 @@ func (t *IPv4Trie[T]) Insert(prefix string, value T) error {
 	return nil
 }
 
-func (t *IPv4Trie[T]) Find(ipStr string) (matched T, exists bool) {
-	addr, err := netip.ParseAddr(ipStr)
-	if err != nil {
-		return
-	}
-
-	addr = addr.Unmap()
+func (t *IPv4Trie[T]) Find(addr netip.Addr) (matched T, exists bool) {
+	/*addr = addr.Unmap()
 	if !addr.Is4() {
 		return
-	}
+	}*/
 
 	ipBytes := addr.As4()
 	ipUint := binary.BigEndian.Uint32(ipBytes[:])
@@ -107,10 +102,9 @@ func (t *IPv4Trie[T]) Find(ipStr string) (matched T, exists bool) {
 		cur = cur.children[b]
 	}
 	if cur.valueExists {
-		matched = cur.value
-		exists = true
+		return cur.value, true
 	}
-	if !exists && t.root.valueExists {
+	if !exists {
 		return t.root.value, t.root.valueExists
 	}
 	return

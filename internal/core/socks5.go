@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"slices"
@@ -23,16 +22,13 @@ var (
 
 const maxConnID = 0xFFFFF
 
-func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
-	defer func() { done <- struct{}{} }()
-	var listenAddr string
-	if *addr == "" {
-		listenAddr = serverAddr
-	} else {
-		listenAddr = *addr
+func SOCKS5Serve(cmdAddr, configAddr string) {
+	listenAddr := cmdAddr
+	if listenAddr == "" {
+		listenAddr = configAddr
 	}
 	if listenAddr == "" {
-		fmt.Println("SOCKS5 bind address is not specified")
+		F.Println("SOCKS5 bind address is not specified")
 		return
 	}
 	if listenAddr == "none" {
@@ -45,6 +41,7 @@ func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
 		logger.Error("Failed to start SOCKS5 server: ", err)
 		return
 	}
+	defer ln.Close()
 	logger.Info("SOCKS5 proxy server started at ", ln.Addr())
 
 	var connID uint32
@@ -62,7 +59,6 @@ func SOCKS5Accept(addr *string, serverAddr string, done chan struct{}) {
 			logger.Warn("Accept failed: ", err)
 		} else {
 			logger.Error("Accept failed (fatal): ", err)
-			ln.Close()
 			return
 		}
 	}
@@ -82,7 +78,7 @@ func sendReply(logger log.Logger, conn net.Conn, reply [10]byte) bool {
 }
 
 func socks5Handler(cliConn net.Conn, id uint32) {
-	logger := newLogger(F.ConnIDToHex5('S', id))
+	logger := newLogger(F.ConnIDToHex5("S", id))
 	logger.Info("Connection from ", cliConn.RemoteAddr())
 
 	var (

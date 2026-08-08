@@ -2,12 +2,11 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"maps"
 	"net"
 	"net/http"
-	"sync"
+	"sync/atomic"
 
 	"github.com/lzpls/enimul/internal/dial"
 	F "github.com/lzpls/enimul/internal/fmt"
@@ -20,30 +19,28 @@ const (
 	status502 = "502 Bad Gateway"
 )
 
-var (
-	httpConnID      uint32
-	httpConnIDMutex sync.Mutex
-)
+var httpConnID atomic.Uint32
 
 func getHTTPConnID() uint32 {
-	httpConnIDMutex.Lock()
-	defer httpConnIDMutex.Unlock()
-	httpConnID++
-	if httpConnID > maxConnID {
-		httpConnID = 1
+again:
+	old := httpConnID.Load()
+	new := old + 1
+	if new > maxConnID {
+		new = 1
 	}
-	return httpConnID
+	if httpConnID.CompareAndSwap(old, new) {
+		return new
+	}
+	goto again
 }
 
-func HTTPAccept(addr *string, serverAddr string) {
-	var listenAddr string
-	if *addr == "" {
-		listenAddr = serverAddr
-	} else {
-		listenAddr = *addr
+func HTTPServe(cmdAddr, configAddr string) {
+	listenAddr := cmdAddr
+	if listenAddr == "" {
+		listenAddr = configAddr
 	}
 	if listenAddr == "" {
-		fmt.Println("HTTP bind address is not specified")
+		F.Println("HTTP bind address is not specified")
 		return
 	}
 	if listenAddr == "none" {
@@ -63,7 +60,7 @@ func HTTPAccept(addr *string, serverAddr string) {
 }
 
 func httpHandler(w http.ResponseWriter, req *http.Request) {
-	logger := newLogger(F.ConnIDToHex5('H', getHTTPConnID()))
+	logger := newLogger(F.ConnIDToHex5("H", getHTTPConnID()))
 	logger.Info(req.RemoteAddr, " - \"", req.Method, " ", req.RequestURI, " ", req.Proto, "\"")
 
 	if req.Method == http.MethodConnect {

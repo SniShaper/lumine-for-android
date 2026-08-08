@@ -90,7 +90,7 @@ func StartLumine(fd int, configName string) string {
 
 	configPath := filepath.Join(workingDir, configName+".json")
 
-	_, _, err := lumine.LoadConfig(configPath)
+	_, _, _, err := lumine.LoadConfig(configPath, false)
 	if err != nil {
 		return fmt.Sprintf("load config error: %v", err)
 	}

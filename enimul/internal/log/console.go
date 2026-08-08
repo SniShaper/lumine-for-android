@@ -56,6 +56,7 @@ func (l *consoleLogger) output(lvl Level, args []any) {
 	*bufp = append(*bufp, ' ')
 
 	*bufp = appendLevel(*bufp, lvl)
+	*bufp = append(*bufp, ' ')
 
 	*bufp = F.Append(*bufp, args...)
 	*bufp = append(*bufp, '\n')

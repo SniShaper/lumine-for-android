@@ -10,19 +10,21 @@ import (
 const hexDigits = "0123456789abcdef"
 
 func Byte(b byte) string {
-	var hexBuf [2]byte
-	hexBuf[0] = hexDigits[b>>4]
-	hexBuf[1] = hexDigits[b&0xf]
-	return string(hexBuf[:])
+	var buf [2]byte
+	buf[0] = hexDigits[b>>4]
+	buf[1] = hexDigits[b&0xf]
+	return string(buf[:])
 }
 
-func ConnIDToHex5(name byte, id uint32) string {
-	var hexBuf [8]byte
-	hexBuf[0], hexBuf[1], hexBuf[7] = name, '[', ']'
+func ConnIDToHex5(prefix string, id uint32) string {
+	prefixLen := len(prefix)
+	buf := make([]byte, prefixLen+1+5+1)
+	copy(buf, prefix)
+	buf[prefixLen], buf[len(buf)-1] = '[', ']'
 	for i := range 5 {
-		hexBuf[i+2] = hexDigits[(id>>uint(4*(4-i)))&0xf]
+		buf[prefixLen+i+1] = hexDigits[(id>>uint(4*(4-i)))&0xf]
 	}
-	return string(hexBuf[:])
+	return string(buf)
 }
 
 func Append(b []byte, args ...any) []byte {

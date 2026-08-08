@@ -2,6 +2,7 @@ package core
 
 import (
 	"net"
+	"net/netip"
 
 	E "github.com/lzpls/enimul/internal/errors"
 	F "github.com/lzpls/enimul/internal/fmt"
@@ -90,7 +91,9 @@ func PlanRequest(req RequestContext, logger log.Logger) (DialPlan, error) {
 	// and so we know whether the GFW-list fallback below should apply.
 	matchedDomain, matchedIP := false, false
 	if isIP {
-		_, matchedIP = getIPPolicy(planningHost)
+		if addr, err := netip.ParseAddr(planningHost); err == nil {
+			_, matchedIP = getIPPolicy(addr)
+		}
 	} else {
 		_, matchedDomain = domainMatcher.Find(planningHost)
 	}
@@ -129,9 +132,11 @@ func PlanRequest(req RequestContext, logger log.Logger) (DialPlan, error) {
 		}
 	}
 
-	if !matchedIP && dstHost != "" && net.ParseIP(dstHost) != nil {
-		if _, found := getIPPolicy(dstHost); found {
-			matchedIP = true
+	if !matchedIP && dstHost != "" {
+		if addr, err := netip.ParseAddr(dstHost); err == nil {
+			if _, found := getIPPolicy(addr); found {
+				matchedIP = true
+			}
 		}
 	}
 

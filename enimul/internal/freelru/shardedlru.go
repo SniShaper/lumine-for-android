@@ -14,7 +14,7 @@ import (
 // The downside is that exact LRU behavior is not given (as for the LRU and SynchedLRU types).
 type ShardedLRU[K comparable, V any] struct {
 	lrus   []LRU[K, V]
-	mus    []sync.RWMutex
+	mus    []sync.Mutex
 	hash   HashKeyCallback[K]
 	shards uint32
 	mask   uint32
@@ -113,7 +113,7 @@ func NewShardedWithSize[K comparable, V any](shards, capacity, size uint32,
 
 	return &ShardedLRU[K, V]{
 		lrus:   lrus,
-		mus:    make([]sync.RWMutex, shards),
+		mus:    make([]sync.Mutex, shards),
 		hash:   hash,
 		shards: shards,
 		mask:   shards - 1,

@@ -2,11 +2,11 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"maps"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/lzpls/enimul/internal/dial"
@@ -20,17 +20,32 @@ const (
 	status502 = "502 Bad Gateway"
 )
 
-var httpConnID Counter
+var httpConnID atomic.Uint32
 
-func HTTPAccept(addr *string, serverAddr string, stop <-chan struct{}) {
-	var listenAddr string
-	if *addr == "" {
-		listenAddr = serverAddr
-	} else {
-		listenAddr = *addr
+func getHTTPConnID() uint32 {
+again:
+	old := httpConnID.Load()
+	new := old + 1
+	if new > maxConnID {
+		new = 1
+	}
+	if httpConnID.CompareAndSwap(old, new) {
+		return new
+	}
+	goto again
+}
+
+// HTTPServe binds cmdAddr (or configAddr if unset) and serves HTTP proxy
+// traffic until stop is closed, at which point it shuts the server down.
+// The stop channel lets the Android VPN service stop the engine cleanly
+// when the user disables the VPN.
+func HTTPServe(cmdAddr, configAddr string, stop <-chan struct{}) {
+	listenAddr := cmdAddr
+	if listenAddr == "" {
+		listenAddr = configAddr
 	}
 	if listenAddr == "" {
-		fmt.Println("HTTP bind address is not specified")
+		F.Println("HTTP bind address is not specified")
 		return
 	}
 	if listenAddr == "none" {
@@ -61,7 +76,7 @@ func HTTPAccept(addr *string, serverAddr string, stop <-chan struct{}) {
 }
 
 func httpHandler(w http.ResponseWriter, req *http.Request) {
-	logger := newLogger(F.ConnIDToHex5('H', httpConnID.Next()))
+	logger := newLogger(F.ConnIDToHex5("H", getHTTPConnID()))
 	logger.Info(req.RemoteAddr, " - \"", req.Method, " ", req.RequestURI, " ", req.Proto, "\"")
 
 	if req.Method == http.MethodConnect {

@@ -33,7 +33,7 @@ func (p *LumineProxy) DialContext(ctx context.Context, m *metadata.Metadata) (ne
 	}
 
 	originHost := m.DstIP.String()
-	logger := lumine.NewSessionLogger(F.ConnIDToHex5('T', tcpDialID.Next()))
+	logger := lumine.NewSessionLogger(F.ConnIDToHex5("T", tcpDialID.Next()))
 	if lumine.IsVPNDNSAddress(originHost, int(m.DstPort)) {
 		logger.Debug("Hijacking TCP DNS for", net.JoinHostPort(originHost, fmt.Sprintf("%d", m.DstPort)))
 		return newLocalDNSTCPConn(logger)
@@ -72,7 +72,7 @@ func (p *LumineProxy) DialContext(ctx context.Context, m *metadata.Metadata) (ne
 }
 
 func (p *LumineProxy) DialUDP(m *metadata.Metadata) (net.PacketConn, error) {
-	logger := lumine.NewSessionLogger(F.ConnIDToHex5('U', udpDialID.Next()))
+	logger := lumine.NewSessionLogger(F.ConnIDToHex5("U", udpDialID.Next()))
 	if m == nil || !m.DstIP.IsValid() {
 		logger.Error("Invalid UDP metadata:", m)
 		return nil, fmt.Errorf("invalid udp metadata: %+v", m)

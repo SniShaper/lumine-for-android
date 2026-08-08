@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"runtime"
+	"sync"
 
 	"github.com/lzpls/enimul/internal/core"
 	F "github.com/lzpls/enimul/internal/fmt"
@@ -18,10 +19,12 @@ func main() {
 		showLicense()
 	}
 	confPath := flag.String("c", "", "Config file path (override environment variable ENIMUL_CONFIG_FILE)")
-	addr := flag.String("b", "", "SOCKS5 bind address (override config)")
-	hAddr := flag.String("hb", "", "HTTP bind address (override config)")
+	socks5Addr := flag.String("b", "", "SOCKS5 bind address (override config)")
+	httpAddr := flag.String("hb", "", "HTTP bind address (override config)")
+	sniAddr := flag.String("spb", "", "SNI proxy bind address (override config)")
 	maxprocs := flag.Int("mp", 0, "GOMAXPROCS")
 	printLicense := flag.Bool("license", false, "Show license and source code information and exit")
+	disallowUnknownFields := flag.Bool("duf", false, "Reject config containing unknown fields")
 	flag.Parse()
 
 	if *printLicense {
@@ -36,7 +39,7 @@ func main() {
 			configPath = "config.json"
 		}
 	}
-	socks5Addr, httpAddr, err := core.LoadConfig(configPath)
+	configSocks5Addr, configHTTPAddr, configSNIAddr, err := core.LoadConfig(configPath, *disallowUnknownFields)
 	if err != nil {
 		F.Println("Failed to load config:", err)
 		return
@@ -49,9 +52,11 @@ func main() {
 	startPprofServer()
 
 	stop := make(chan struct{})
-	go core.SOCKS5Accept(addr, socks5Addr, stop)
-	go core.HTTPAccept(hAddr, httpAddr, stop)
-	select {}
+	var wg sync.WaitGroup
+	wg.Go(func() { core.SOCKS5Serve(*socks5Addr, configSocks5Addr, stop) })
+	wg.Go(func() { core.HTTPServe(*httpAddr, configHTTPAddr, stop) })
+	wg.Go(func() { core.SNIServe(*sniAddr, configSNIAddr, stop) })
+	wg.Wait()
 }
 
 func showLicense() {

@@ -79,7 +79,7 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
     val vpnRequestLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == ComponentActivity.RESULT_OK) {
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
             VpnRuntimeState.setStatus("starting", "权限已授予，正在启动服务")
             val intent = Intent(context, LumineVpnService::class.java).apply {
                 putExtra("CONFIG_NAME", viewModel.selectedConfigName.value)

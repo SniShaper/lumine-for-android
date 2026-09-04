@@ -41,6 +41,9 @@ go.work.sum
 .env
 .signing/
 
+# WorkBuddy workspace data
+.workbuddy/
+
 # Editor/IDE
 .idea/
 .vscode/

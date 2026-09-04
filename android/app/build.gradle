@@ -1,6 +1,9 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 def envOrProp = { String name ->
@@ -33,7 +36,12 @@ android {
             if (project.hasProperty("ABI_FILTER")) {
                 include(ABI_FILTER)
             } else {
-                include 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
+                def isRelease = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+                if (isRelease) {
+                    include 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
+                } else {
+                    include 'arm64-v8a'
+                }
             }
             universalApk false
         }
@@ -78,14 +86,8 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    kotlinOptions {
-        jvmTarget = '1.8'
-    }
     buildFeatures {
         compose true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion '1.5.11'
     }
     packagingOptions {
         resources {
@@ -97,6 +99,12 @@ android {
         includeInApk false
         // Disables dependency metadata when building Android App Bundles.
         includeInBundle false
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_1_8)
     }
 }
 
@@ -112,35 +120,36 @@ android.applicationVariants.all { variant ->
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.12.0'
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
-    implementation 'androidx.activity:activity-compose:1.8.2'
-    implementation platform('androidx.compose:compose-bom:2024.02.01')
+    implementation 'androidx.core:core-ktx:1.18.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
+    implementation 'androidx.activity:activity-compose:1.13.0'
+    implementation platform('androidx.compose:compose-bom:2026.06.01')
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
-    implementation 'androidx.compose.material:material-icons-extended'
-    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.compose.material:material-icons-extended:1.7.8'
+    implementation 'com.google.android.material:material:1.14.0'
     
     // Background keep-alive
-    implementation 'androidx.work:work-runtime-ktx:2.9.0'
+    implementation 'androidx.work:work-runtime-ktx:2.11.2'
     
     // JSON & Networking
-    implementation "com.squareup.moshi:moshi-kotlin:1.15.1"
+    implementation "com.squareup.moshi:moshi-kotlin:1.15.2"
+    implementation "org.jetbrains.kotlin:kotlin-reflect:2.4.10"
     
     // Lifecycle & Navigation
-    implementation "androidx.navigation:navigation-compose:2.7.7"
-    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0"
+    implementation "androidx.navigation:navigation-compose:2.9.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0"
 
     // Gomobile generated AAR
     implementation fileTree(dir: 'libs', include: ['*.aar'])
 
     
     testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-    androidTestImplementation platform('androidx.compose:compose-bom:2024.02.01')
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
+    androidTestImplementation platform('androidx.compose:compose-bom:2026.06.01')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'

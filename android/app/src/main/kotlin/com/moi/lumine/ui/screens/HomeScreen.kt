@@ -30,8 +30,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -74,6 +76,18 @@ fun HomeScreen(
     val isConnected by viewModel.isVpnActive.collectAsState()
     val selectedConfig by viewModel.selectedConfigDisplayName.collectAsState()
     val vpnStatus by viewModel.vpnStatus.collectAsState()
+    val config by viewModel.currentConfig.collectAsState()
+
+    val workModeLabel = remember(config.defaultPolicy.mode) {
+        when (config.defaultPolicy.mode) {
+            "tls-rf" -> "TLS 分片"
+            "direct" -> "直连"
+            "raw" -> "原始直连"
+            "ttl-d" -> "TTL 探测"
+            "block" -> "阻断"
+            else -> config.defaultPolicy.mode ?: "TLS 分片"
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -115,32 +129,95 @@ fun HomeScreen(
             SessionStatsLine(active = isConnected)
         }
 
-        item { SectionLabel("概览") }
+        item { SectionLabel("仪表盘") }
+        item {
+            DashboardInfoRow(
+                running = isConnected,
+                workMode = workModeLabel
+            )
+        }
 
-        item { SectionLabel("代理") }
+        item { SectionLabel("配置") }
         item {
             MenuCard(
-                title = "代理 · 配置订阅",
+                title = "配置订阅（移动端）",
                 subtitle = "当前使用：$selectedConfig",
                 icon = Icons.Default.Description,
                 onClick = { navController.navigate(Screen.Subscriptions.route) }
             )
         }
 
-        item { SectionLabel("菜单") }
+        item { SectionLabel("主导航") }
         item {
             MenuGroup {
-                MenuRow(Icons.Default.Tune, "规则") { navController.navigate(Screen.Rules.route) }
+                MenuRow(Icons.Default.Settings, "代理节点") { navController.navigate(Screen.Proxies.route) }
                 MenuDivider()
-                MenuRow(Icons.AutoMirrored.Filled.Assignment, "日志") { navController.navigate(Screen.Logs.route) }
+                MenuRow(Icons.Default.Tune, "分流规则") { navController.navigate(Screen.Rules.route) }
                 MenuDivider()
-                MenuRow(Icons.Default.Settings, "设置") { navController.navigate(Screen.Settings.route) }
+                MenuRow(Icons.Default.Security, "自动分流") { navController.navigate(Screen.Routing.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.Dns, "DNS 设置") { navController.navigate(Screen.Dns.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.Science, "进化模式") { navController.navigate(Screen.Evolution.route) }
+                MenuDivider()
+                MenuRow(Icons.AutoMirrored.Filled.Assignment, "实时日志") { navController.navigate(Screen.Logs.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.Settings, "系统设置") { navController.navigate(Screen.Settings.route) }
                 MenuDivider()
                 MenuRow(Icons.Default.Info, "关于") { navController.navigate(Screen.About.route) }
                 MenuDivider()
-                MenuRow(Icons.Default.Security, "保活设置") { navController.navigate(Screen.KeepAlive.route) }
+                MenuRow(Icons.Default.Security, "保活设置（移动端）") { navController.navigate(Screen.KeepAlive.route) }
             }
         }
+    }
+}
+
+@Composable
+private fun DashboardInfoRow(running: Boolean, workMode: String) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = scheme.surfaceContainerLow,
+            contentColor = scheme.onSurface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatLine(label = "运行状态", value = if (running) "运行中" else "已停止", running = running)
+            StatLine(label = "工作模式", value = workMode, running = null)
+            StatLine(label = "TUN", value = if (running) "已就绪" else "未建立", running = null)
+        }
+    }
+}
+
+@Composable
+private fun StatLine(label: String, value: String, running: Boolean?) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(84.dp)
+        )
+        if (running != null) {
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = CircleShape,
+                color = if (running) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline
+            ) {}
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 

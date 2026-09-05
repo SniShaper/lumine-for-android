@@ -89,8 +89,9 @@ func copyPacketData(dst, src net.PacketConn, to net.Addr, timeout time.Duration)
 
 type symmetricNATPacketConn struct {
 	net.PacketConn
-	src string
-	dst string
+	src     string
+	dst     string
+	dstPort int
 }
 
 func newSymmetricNATPacketConn(pc net.PacketConn, metadata *M.Metadata) *symmetricNATPacketConn {
@@ -98,16 +99,32 @@ func newSymmetricNATPacketConn(pc net.PacketConn, metadata *M.Metadata) *symmetr
 		PacketConn: pc,
 		src:        metadata.SourceAddress(),
 		dst:        metadata.DestinationAddress(),
+		dstPort:    int(metadata.DstPort),
 	}
 }
 
+// ReadFrom 过滤会话外的回包。每个 UDP 会话拥有独立出站 socket，回包已按
+// 本地端口分发，无需校验源 IP：QUIC/HTTP3 场景下 anycast 服务端（Cloudflare
+// 等）可能从同一端口的其它边缘地址回包，NAT64/fake-IP 还原后源地址更不等于
+// 会话记录地址，严格源校验会误杀合法流量。这里仅要求源端口与会话目标端口
+// 一致（防无关端口注入），放行同端口的 anycast/NAT64 回包。
 func (pc *symmetricNATPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	for {
 		n, from, err := pc.PacketConn.ReadFrom(p)
+		if err != nil {
+			return n, from, err
+		}
 
-		if from != nil && from.String() != pc.dst {
-			log.Warnf("[UDP] symmetric NAT %s->%s: drop packet from %s", pc.src, pc.dst, from)
-			continue
+		if from != nil {
+			if ua, ok := from.(*net.UDPAddr); ok {
+				if ua.Port != pc.dstPort {
+					log.Warnf("[UDP] symmetric NAT %s->%s: drop packet from %s", pc.src, pc.dst, from)
+					continue
+				}
+			} else if from.String() != pc.dst {
+				log.Warnf("[UDP] symmetric NAT %s->%s: drop packet from %s", pc.src, pc.dst, from)
+				continue
+			}
 		}
 
 		return n, from, err

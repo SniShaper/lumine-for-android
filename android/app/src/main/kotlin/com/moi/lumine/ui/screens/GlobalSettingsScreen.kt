@@ -137,7 +137,7 @@ fun GlobalSettingsScreen(navController: NavController, viewModel: ConfigViewMode
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("全局设置") },
+                title = { Text("系统设置") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

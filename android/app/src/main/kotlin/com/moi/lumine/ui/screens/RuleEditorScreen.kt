@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
@@ -22,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -44,6 +47,16 @@ import com.moi.lumine.ui.components.RadioOptionRow
 import com.moi.lumine.ui.components.SectionHeader
 
 private const val DEFAULT_NAT64_PREFIX = "2001:67c:2960:6464::"
+
+// 上游(Upstream)字段允许 "ip:port" 输入，但 host 只接受单 IP/域名 → 去除端口。
+private fun sanitizeHost(raw: String): String {
+    val t = raw.trim()
+    if (t.isEmpty()) return ""
+    val hasSingleColon = t.count { it == ':' } == 1
+    return if (hasSingleColon) t.substringBefore(':').trim() else t
+}
+
+private data class ModeOpt(val id: String, val label: String, val desc: String, val usable: Boolean)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,7 +130,7 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                     IconButton(onClick = {
                         val updatedPolicy = initialPolicy.copy(
                             mode = mode,
-                            host = host.ifEmpty { null },
+                            host = sanitizeHost(host).ifEmpty { null },
                             mapTo = mapTo.ifEmpty { null },
                             dnsMode = dnsMode.ifEmpty { null },
                             tls13Only = tls13Only,
@@ -182,29 +195,49 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
 
             item {
                 SectionHeader(
-                    text = "代理模式 (Mode)",
+                    text = "代理模式",
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                 )
             }
 
-            val modes = listOf("tls-rf", "raw", "direct", "block", "ttl-d")
-            items(modes.size, key = { modes[it] }) { index ->
-                val m = modes[index]
+            val modeOptions = listOf(
+                ModeOpt("tls-rf", "TLS 分片", "TLS 分片/记录重排，抗 SNI 阻断", true),
+                ModeOpt("transparent", "透传", "不解密 TLS，仅透传", true),
+                ModeOpt("raw", "原始直连", "不经任何处理的原始直连", true),
+                ModeOpt("ttl-d", "TTL 探测", "TTL desync 抗封锁探测", true),
+                ModeOpt("block", "阻断", "匹配后直接阻断连接", true),
+                ModeOpt("mitm", "MITM", "需 CA 证书，移动端不支持", false),
+                ModeOpt("quic", "QUIC 分片混淆", "桌面代理专有，移动端不支持", false),
+                ModeOpt("migration", "会话恢复", "TLS 会话恢复迁移，桌面代理专有", false)
+            )
+            val modeValue = if (mode == "direct") "transparent" else mode
+            items(modeOptions.size, key = { modeOptions[it].id }) { index ->
+                val (id, label, desc, usable) = modeOptions[index]
+                val selected = modeValue == id
                 RadioOptionRow(
-                    label = m,
-                    selected = (mode == m),
-                    onClick = { mode = m }
+                    label = label,
+                    selected = selected,
+                    onClick = {
+                        if (usable) {
+                            mode = if (id == "transparent") "direct" else id
+                        }
+                    },
+                    description = desc,
+                    modifier = Modifier
                 )
             }
 
             item {
                 Spacer(modifier = Modifier.height(8.dp))
+                SectionHeader(text = "上游服务器 (Upstream)")
+                Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = host,
                     onValueChange = { host = it },
-                    label = { Text("目标主机 (Host Overwrite)") },
+                    label = { Text("上游服务器 (Upstream)") },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("例如 1.1.1.1 或 self") }
+                    placeholder = { Text("留空直连，或填写 IP / 域名（如 1.2.3.4）") },
+                    supportingText = { Text("仅接受单个 IP 或域名；填写 ip:port 时仅取 IP 部分。") }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
@@ -214,6 +247,45 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("例如 127.0.0.1:8080") }
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                SectionHeader(text = "DNS 解析策略")
+                Spacer(modifier = Modifier.height(4.dp))
+                val dnsOptions = listOf(
+                    "" to "默认",
+                    "prefer_ipv4" to "IPv4 优先",
+                    "prefer_ipv6" to "IPv6 优先",
+                    "ipv4_only" to "仅 IPv4",
+                    "ipv6_only" to "仅 IPv6"
+                )
+                dnsOptions.forEach { (id, label) ->
+                    val v6Only = id == "prefer_ipv6" || id == "ipv6_only"
+                    val dDisabled = v6Only && !ipv6Available
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !dDisabled) { dnsMode = id }
+                            .padding(start = 4.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = dnsMode == id, onClick = null, enabled = !dDisabled)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (dDisabled) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onSurface
+                            )
+                            if (dDisabled) {
+                                Text(
+                                    text = "纯 IPv4 网络：IPv6 相关功能已禁用",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier

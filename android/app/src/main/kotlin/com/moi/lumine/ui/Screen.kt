@@ -11,4 +11,8 @@ sealed class Screen(val route: String) {
     object Logs : Screen("logs")
     object KeepAlive : Screen("keepalive")
     object About : Screen("about")
+    object Proxies : Screen("proxies")
+    object Routing : Screen("routing")
+    object Dns : Screen("dns")
+    object Evolution : Screen("evolution")
 }

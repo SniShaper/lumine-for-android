@@ -73,7 +73,7 @@ fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("规则")
+                        Text("网站规则")
                         Text(
                             text = selectedConfig,
                             style = MaterialTheme.typography.bodySmall,
@@ -105,7 +105,7 @@ fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("搜索域名或 IP 规则...") },
+                placeholder = { Text("搜索规则、分类或域名...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.large
@@ -115,7 +115,7 @@ fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
                 if (domainRules.isEmpty() && ipRules.isEmpty()) {
                     item {
                         Text(
-                            text = "没有匹配的规则",
+                            text = "未找到结果",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp)

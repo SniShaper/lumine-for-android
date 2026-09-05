@@ -182,6 +182,10 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
             }
             composable(Screen.Settings.route) { GlobalSettingsScreen(navController, viewModel) }
             composable(Screen.Logs.route) { LogScreen(navController, viewModel) }
+            composable(Screen.Proxies.route) { ProxiesScreen(navController, viewModel) }
+            composable(Screen.Routing.route) { RoutingScreen(navController, viewModel) }
+            composable(Screen.Dns.route) { DnsScreen(navController, viewModel) }
+            composable(Screen.Evolution.route) { EvolutionScreen(navController, viewModel) }
             composable(Screen.KeepAlive.route) {
                 com.moi.lumine.keepalive.KeepAliveGuideScreen(navController)
             }

@@ -134,7 +134,7 @@ fun LogScreen(navController: NavController, viewModel: ConfigViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("实时日志") },
+                title = { Text("系统日志") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

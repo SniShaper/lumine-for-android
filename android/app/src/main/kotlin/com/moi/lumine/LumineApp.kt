@@ -3,6 +3,7 @@ package com.moi.lumine
 import android.app.Application
 import android.util.Log
 import com.moi.lumine.keepalive.KeepAlive
+import com.moi.lumine.network.NetworkMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,9 @@ class LumineApp : Application() {
         if (KeepAlive.shouldRun(this)) {
             KeepAlive.scheduleAll(this)
         }
+
+        // 网络环境监控（IPv6/NAT64 检测 + 引擎缓存刷新），进程级单例
+        NetworkMonitor.start(this)
 
         startWatchdog()
     }

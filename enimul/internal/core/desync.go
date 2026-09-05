@@ -18,9 +18,10 @@ import (
 )
 
 var (
-	calcTTL         func(int) (int, error)
-	ttlCache        *freelru.ShardedLRU[string, int]
-	ttlProbingGroup *singleflight.Group[string, int]
+	calcTTL              func(int) (int, error)
+	ttlCache             *freelru.ShardedLRU[string, int]
+	ttlProbingGroup      *singleflight.Group[string, int]
+	lastTTLProbingConfig TTLProbingConfig
 )
 
 type TTLProbingConfig struct {
@@ -31,6 +32,7 @@ type TTLProbingConfig struct {
 }
 
 func setTTLProbing(c TTLProbingConfig) error {
+	lastTTLProbingConfig = c
 	if err := loadTTLRules(c.FakeTTLRules); err != nil {
 		return err
 	}

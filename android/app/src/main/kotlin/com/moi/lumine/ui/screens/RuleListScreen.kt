@@ -28,6 +28,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -52,6 +53,7 @@ import com.moi.lumine.ui.components.SectionHeader
 fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
     val config by viewModel.currentConfig.collectAsState()
     val selectedConfig by viewModel.selectedConfigDisplayName.collectAsState()
+    val disabledRules by viewModel.disabledRuleKeys.collectAsState()
     var searchText by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
 
@@ -127,10 +129,16 @@ fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
                     )
                 }
                 items(items = domainRules, key = { it }) { key ->
-                    RuleItem(key, "domain") {
-                        viewModel.setEditingRule(key)
-                        navController.navigate(Screen.RuleDetail.createRoute("domain"))
-                    }
+                    RuleItem(
+                        key = key,
+                        type = "domain",
+                        enabled = key !in disabledRules,
+                        onToggle = { enabled -> viewModel.setRuleEnabled(key, enabled) },
+                        onClick = {
+                            viewModel.setEditingRule(key)
+                            navController.navigate(Screen.RuleDetail.createRoute("domain"))
+                        }
+                    )
                 }
 
                 item {
@@ -140,10 +148,16 @@ fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
                     )
                 }
                 items(items = ipRules, key = { it }) { key ->
-                    RuleItem(key, "ip") {
-                        viewModel.setEditingRule(key)
-                        navController.navigate(Screen.RuleDetail.createRoute("ip"))
-                    }
+                    RuleItem(
+                        key = key,
+                        type = "ip",
+                        enabled = key !in disabledRules,
+                        onToggle = { enabled -> viewModel.setRuleEnabled(key, enabled) },
+                        onClick = {
+                            viewModel.setEditingRule(key)
+                            navController.navigate(Screen.RuleDetail.createRoute("ip"))
+                        }
+                    )
                 }
             }
         }
@@ -215,7 +229,13 @@ private fun CreateRuleDialog(
 }
 
 @Composable
-fun RuleItem(key: String, type: String, onClick: () -> Unit) {
+fun RuleItem(
+    key: String,
+    type: String,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onClick: () -> Unit
+) {
     val isDomain = type == "domain"
     ListItem(
         headlineContent = {
@@ -254,10 +274,9 @@ fun RuleItem(key: String, type: String, onClick: () -> Unit) {
             }
         },
         trailingContent = {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle
             )
         },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),

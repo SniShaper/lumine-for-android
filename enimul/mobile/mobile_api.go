@@ -43,6 +43,7 @@ type LogWriter struct{}
 
 func (w *LogWriter) Write(p []byte) (n int, err error) {
 	pushLog(string(p))
+	writeSessionLog(p)
 	return len(p), nil
 }
 
@@ -88,6 +89,8 @@ func StartLumine(fd int, configName string) string {
 	clearLogsLocked()
 	logMu.Unlock()
 
+	lumine.ResetStats()
+
 	configPath := filepath.Join(workingDir, configName+".json")
 
 	_, _, err := lumine.LoadConfig(configPath)
@@ -128,6 +131,7 @@ func StopLumine() {
 	engine.ClearCustomProxy()
 	isRunning = false
 	lumine.SetLogWriter(nil)
+	closeSessionLog()
 }
 
 // IsRunning 返回核心当前是否正在运行。
@@ -157,4 +161,30 @@ func HelloSplice() string {
 		return "Splice is available on Linux/Android"
 	}
 	return "Splice is NOT available on " + runtime.GOOS
+}
+
+// GetStats 返回会话统计 JSON：{down,up,blocked,tcp_conns,udp_conns,uptime_ms}。
+func GetStats() string {
+	return lumine.SnapshotStats().JSON()
+}
+
+// OnNetworkChanged 在底层默认网络切换（Wi-Fi<->蜂窝、onLost/onAvailable）后调用，
+// 清空 DNS/反向解析/TTL 缓存使后续解析走当前网络路径。
+func OnNetworkChanged() string {
+	lumine.ResetRuntimeState()
+	mainLogger.Info("network changed: runtime caches cleared")
+	return ""
+}
+
+// SetLogFileEnabled 开关会话日志落盘（<workingDir>/logs/lumine*.log），默认开启。
+func SetLogFileEnabled(enabled bool) {
+	setLogFilesEnabled(enabled)
+}
+
+// LogFilePath 返回当前会话日志目录路径，供宿主应用展示/清理（未设置工作目录时返回空）。
+func LogFilePath() string {
+	if workingDir == "" {
+		return ""
+	}
+	return filepath.Join(workingDir, "logs")
 }

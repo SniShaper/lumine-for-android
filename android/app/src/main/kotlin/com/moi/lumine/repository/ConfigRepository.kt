@@ -18,6 +18,7 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 
 class ConfigRepository(private val context: Context) {
 
@@ -29,7 +30,81 @@ class ConfigRepository(private val context: Context) {
     private val subscriptionListAdapter = moshi.adapter<List<SubscriptionProfile>>(
         Types.newParameterizedType(List::class.java, SubscriptionProfile::class.java)
     ).indent("    ")
+    private val policyAdapter = moshi.adapter(com.moi.lumine.model.Policy::class.java)
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun disabledPrefKey(name: String) = "disabled_rules_$name"
+
+    private fun loadDisabledSnapshots(name: String): JSONObject {
+        return try {
+            JSONObject(prefs.getString(disabledPrefKey(name), "{}") ?: "{}")
+        } catch (e: Exception) {
+            JSONObject()
+        }
+    }
+
+    fun disabledRuleKeys(name: String): Set<String> {
+        val snap = loadDisabledSnapshots(name)
+        val out = mutableSetOf<String>()
+        val it = snap.keys()
+        while (it.hasNext()) out.add(it.next())
+        return out
+    }
+
+    /** 启用/禁用一条规则：禁用项快照到 prefs，写盘时剔除；启用时从快照移除并恢复。 */
+    suspend fun setRuleEnabled(name: String, config: LumineConfig, key: String, enabled: Boolean) {
+        val snap = loadDisabledSnapshots(name)
+        val inDomain = config.domainPolicies.containsKey(key)
+        val inIp = config.ipPolicies.containsKey(key)
+        if (!inDomain && !inIp) return
+        if (enabled) {
+            snap.remove(key)
+        } else {
+            val policy = when {
+                inDomain -> config.domainPolicies[key]
+                else -> config.ipPolicies[key]
+            } ?: return
+            val entry = JSONObject()
+            entry.put("t", if (inDomain) "d" else "i")
+            entry.put("p", policyAdapter.toJson(policy))
+            snap.put(key, entry)
+        }
+        prefs.edit().putString(disabledPrefKey(name), snap.toString()).apply()
+        saveConfig(name, config)
+    }
+
+    private fun stripDisabled(config: LumineConfig, name: String): LumineConfig {
+        val snap = loadDisabledSnapshots(name)
+        if (snap.length() == 0) return config
+        var dp = config.domainPolicies
+        var ip = config.ipPolicies
+        val keys = snap.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val entry = snap.optJSONObject(key) ?: continue
+            if (entry.optString("t") == "i") ip = ip - key else dp = dp - key
+        }
+        return config.copy(domainPolicies = dp, ipPolicies = ip)
+    }
+
+    private fun mergeDisabledSnapshots(config: LumineConfig, name: String): LumineConfig {
+        val snap = loadDisabledSnapshots(name)
+        if (snap.length() == 0) return config
+        var dp = config.domainPolicies
+        var ip = config.ipPolicies
+        val keys = snap.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val entry = snap.optJSONObject(key) ?: continue
+            val policy = try {
+                policyAdapter.fromJson(entry.getString("p"))
+            } catch (e: Exception) {
+                null
+            } ?: continue
+            if (entry.optString("t") == "i") ip = ip + (key to policy) else dp = dp + (key to policy)
+        }
+        return config.copy(domainPolicies = dp, ipPolicies = ip)
+    }
 
     suspend fun loadConfig(name: String): LumineConfig? = withContext(Dispatchers.IO) {
         try {
@@ -48,11 +123,12 @@ class ConfigRepository(private val context: Context) {
                         LumineConfig()
                     }
                     saveConfig("config", config)
-                    return@withContext config
+                    return@withContext mergeDisabledSnapshots(config, "config")
                 }
                 return@withContext null
             }
-            adapter.fromJson(file.readText())
+            val parsed = adapter.fromJson(file.readText()) ?: return@withContext null
+            return@withContext mergeDisabledSnapshots(parsed, name)
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -62,7 +138,7 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveConfig(name: String, config: LumineConfig) = withContext(Dispatchers.IO) {
         try {
             val file = File(context.filesDir, "$name.json")
-            file.writeText(adapter.toJson(config))
+            file.writeText(adapter.toJson(stripDisabled(config, name)))
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -246,6 +322,63 @@ class ConfigRepository(private val context: Context) {
             file
         )
         ExportedLogFile(uri = uri, fileName = fileName)
+    }
+
+    suspend fun exportConfigJson(name: String, config: LumineConfig): ExportedLogFile = withContext(Dispatchers.IO) {
+        val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+        exportDir.listFiles()
+            ?.filter { it.name.startsWith("lumine-config-") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.drop(9)
+            ?.forEach { it.delete() }
+
+        val now = Date()
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(now)
+        val safeName = name.replace(Regex("[^A-Za-z0-9_-]+"), "_")
+        val fileName = "lumine-config-$safeName-$stamp.json"
+        val file = File(exportDir, fileName)
+        file.writeText(adapter.toJson(config))
+
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+        ExportedLogFile(uri = uri, fileName = fileName)
+    }
+
+    /**
+     * 从 content Uri 导入配置：读文本 -> moshi 解析 -> mobile.CheckConfig 引擎校验。
+     * @return 成功返回 (null, 已保存的配置名)；失败返回 (错误信息, null)。
+     */
+    suspend fun importConfigFromUri(uri: Uri): Pair<String?, String?> = withContext(Dispatchers.IO) {
+        val content = try {
+            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        } catch (e: Exception) {
+            null
+        }
+        if (content.isNullOrBlank()) {
+            return@withContext ("配置文件为空或不可读" to null)
+        }
+        val parsed = try {
+            adapter.fromJson(content)
+        } catch (e: Exception) {
+            null
+        }
+        if (parsed == null) {
+            return@withContext ("配置 JSON 解析失败" to null)
+        }
+        val engineCheck = try {
+            mobile.Mobile.checkConfig(content)
+        } catch (e: Throwable) {
+            e.message
+        }
+        if (!engineCheck.isNullOrBlank()) {
+            return@withContext ("引擎校验失败：$engineCheck" to null)
+        }
+        val configName = generateConfigName("import")
+        saveConfig(configName, parsed)
+        null to configName
     }
 
     companion object {

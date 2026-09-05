@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,11 +11,15 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	E "github.com/lzpls/enimul/internal/errors"
 	"github.com/lzpls/enimul/internal/freelru"
 	"github.com/lzpls/enimul/internal/singleflight"
+	"github.com/quic-go/quic-go"
 	"golang.org/x/net/proxy"
 
 	"github.com/miekg/dns"
@@ -29,14 +34,18 @@ var (
 	dnsClient       DNSClient
 	httpClient      *http.Client
 	dnsExchange     func(req *dns.Msg) (resp *dns.Msg, err error)
+	dnsExchanges    []func(req *dns.Msg) (resp *dns.Msg, err error)
+	dnsExchangeIdx  atomic.Int64
 	dnsCache        *freelru.ShardedLRU[string, string]
 	dnsResolveGroup *singleflight.Group[string, string]
 	edns0SubnetOpt  *dns.OPT
+	lastDNSConfig   DNSConfig
 )
 
 type DNSConfig struct {
 	Type          string `json:"type"`
 	Addr          string `json:"addr"`
+	Resolvers     []string `json:"resolvers,omitempty"`
 	SingleFlight  bool   `json:"singleflight"`
 	DisableCache  bool   `json:"disable_cache"`
 	CacheCapacity uint32 `json:"cache_capacity"`
@@ -50,36 +59,66 @@ type DNSConfig struct {
 	DoHSocks5Addr string `json:"doh_socks5_addr"`
 }
 
+// exchangeMsg 依次尝试 DNS 端点，成功后粘住该端点（索引缓存在 dnsExchangeIdx），
+// 失败时轮换到下一端点，全部失败返回聚合错误。未配置端点列表时回退单 dnsExchange
+// （兼容测试与代码内联 stub）。
+func exchangeMsg(req *dns.Msg) (resp *dns.Msg, err error) {
+	if len(dnsExchanges) == 0 {
+		if dnsExchange == nil {
+			return nil, E.New("no dns upstream configured")
+		}
+		return dnsExchange(req)
+	}
+	start := int(dnsExchangeIdx.Load()) % len(dnsExchanges)
+	var lastErr error
+	for i := 0; i < len(dnsExchanges); i++ {
+		idx := (start + i) % len(dnsExchanges)
+		resp, err = dnsExchanges[idx](req)
+		if err == nil {
+			dnsExchangeIdx.Store(int64(idx))
+			return resp, nil
+		}
+		lastErr = err
+	}
+	dnsExchangeIdx.Store(0)
+	return nil, lastErr
+}
+
 func setDNS(c DNSConfig) error {
+	lastDNSConfig = c
 	if c.Addr == "" {
 		return E.New("dns.addr cannot be empty")
 	}
 
 	dnsAddr = c.Addr
+	endpoints := []string{c.Addr}
+	for _, r := range c.Resolvers {
+		r = strings.TrimSpace(r)
+		if r != "" && r != c.Addr {
+			endpoints = append(endpoints, r)
+		}
+	}
+	dnsExchanges = make([]func(*dns.Msg) (*dns.Msg, error), 0, len(endpoints))
+
 	switch c.Type {
 	case "", "udp": // default
-		if _, err := netip.ParseAddrPort(dnsAddr); err != nil {
-			return E.WithStr("invalid dns.addr", err)
-		}
-
-		var cli dns.Client
 		var err error
+		cli := dns.Client{}
 		if c.UDPSize > 0 {
 			cli.UDPSize = c.UDPSize
 		}
 		if c.ClientTimeout != "" {
-			cli.Timeout, err = time.ParseDuration(c.ClientTimeout)
+			timeout, err := time.ParseDuration(c.ClientTimeout)
 			if err != nil {
 				return E.WithStr("invalid dns.client_timeout", err)
 			}
-			if cli.Timeout <= 0 {
+			if timeout <= 0 {
 				return E.New("dns.client_timeout must be greater than 0")
 			}
+			cli.Timeout = timeout
 		}
-
-		if c.WaitTimeout == "" && c.MinRTT == "" {
-			dnsClient = &cli
-		} else {
+		var exClient DNSClient = &cli
+		if c.WaitTimeout != "" || c.MinRTT != "" {
 			var waitTimeout, minRTT time.Duration
 			if c.WaitTimeout != "" {
 				waitTimeout, err = time.ParseDuration(c.WaitTimeout)
@@ -99,49 +138,122 @@ func setDNS(c DNSConfig) error {
 					return E.New("dns.min_rtt must be greater than 0")
 				}
 			}
-			dnsClient = &antiHijackDNSClient{
+			exClient = &antiHijackDNSClient{
 				Client:      cli,
 				waitTimeout: waitTimeout,
 				minRTT:      minRTT,
 			}
 		}
-		dnsExchange = dnsClientExchange
+		dnsClient = exClient
+		for _, ep := range endpoints {
+			if _, err := netip.ParseAddrPort(ep); err != nil {
+				return E.WithStr("invalid dns.addr", err)
+			}
+			addr := ep
+			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+				resp, _, err := exClient.Exchange(req, addr)
+				return resp, err
+			})
+		}
 	case "tcp":
-		if _, err := netip.ParseAddrPort(dnsAddr); err != nil {
-			return E.WithStr("invalid dns.addr", err)
+		cli := &dns.Client{Net: "tcp"}
+		dnsClient = cli
+		for _, ep := range endpoints {
+			if _, err := netip.ParseAddrPort(ep); err != nil {
+				return E.WithStr("invalid dns.addr", err)
+			}
+			addr := ep
+			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+				resp, _, err := cli.Exchange(req, addr)
+				return resp, err
+			})
 		}
-		dnsClient = &dns.Client{Net: "tcp"}
-		dnsExchange = dnsClientExchange
 	case "tls":
-		if _, err := netip.ParseAddrPort(dnsAddr); err != nil {
-			return E.WithStr("invalid dns.addr", err)
+		cli := &dns.Client{Net: "tcp-tls"}
+		dnsClient = cli
+		for _, ep := range endpoints {
+			if _, err := netip.ParseAddrPort(ep); err != nil {
+				return E.WithStr("invalid dns.addr", err)
+			}
+			addr := ep
+			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+				resp, _, err := cli.Exchange(req, addr)
+				return resp, err
+			})
 		}
-		dnsClient = &dns.Client{Net: "tcp-tls"}
-		dnsExchange = dnsClientExchange
 	case "https":
-		if !isValidHTTPSURL(dnsAddr) {
+		if !isValidHTTPSURL(c.Addr) {
 			return E.New("invalid dns.addr")
 		}
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		if c.DoHSocks5Addr == "" {
-			var err error
-			transport.DialContext, err = genDoHDialFunc()
-			if err != nil {
-				return E.WithStr("generate DoH dial function", err)
+		for _, ep := range endpoints {
+			if !isValidHTTPSURL(ep) {
+				return E.New("invalid dns resolver url: " + ep)
 			}
-		} else {
-			dialer, err := proxy.SOCKS5("tcp", c.DoHSocks5Addr, nil, proxy.Direct)
-			if err != nil {
-				return E.WithStr("create socks5 dialer", err)
+			transport := http.DefaultTransport.(*http.Transport).Clone()
+			if c.DoHSocks5Addr == "" {
+				dial, err := genDoHDialFuncFor(ep)
+				if err != nil {
+					return E.WithStr("generate DoH dial function", err)
+				}
+				transport.DialContext = dial
+			} else {
+				dialer, err := proxy.SOCKS5("tcp", c.DoHSocks5Addr, nil, proxy.Direct)
+				if err != nil {
+					return E.WithStr("create socks5 dialer", err)
+				}
+				transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+					return dialer.Dial(network, addr)
+				}
 			}
-			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
-				return dialer.Dial(network, addr)
-			}
+			client := &http.Client{Transport: transport}
+			endpoint := ep
+			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+				wire, err := req.Pack()
+				if err != nil {
+					return nil, E.WithStr("pack dns request", err)
+				}
+				queryURL := endpoint + "?dns=" + base64.RawURLEncoding.EncodeToString(wire)
+				httpReq, err := http.NewRequest(http.MethodGet, queryURL, nil)
+				if err != nil {
+					return nil, E.WithStr("build http request", err)
+				}
+				httpReq.Header.Set("Accept", "application/dns-message")
+				httpResp, err := client.Do(httpReq)
+				if err != nil {
+					return nil, E.WithStr("http request", err)
+				}
+				defer httpResp.Body.Close()
+				if httpResp.StatusCode != http.StatusOK {
+					return nil, E.New("bad http status: " + httpResp.Status)
+				}
+				respWire, err := io.ReadAll(httpResp.Body)
+				if err != nil {
+					return nil, E.WithStr("read http body", err)
+				}
+				resp := new(dns.Msg)
+				if err = resp.Unpack(respWire); err != nil {
+					return nil, E.WithStr("unpack dns response", err)
+				}
+				return resp, nil
+			})
 		}
-		httpClient = &http.Client{Transport: transport}
-		dnsExchange = dohExchange
+		httpClient = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+	case "quic":
+		for _, ep := range endpoints {
+			if _, _, err := net.SplitHostPort(ep); err != nil {
+				ep = net.JoinHostPort(ep, "853")
+			}
+			dq := newDoQClient(ep)
+			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+				return dq.exchange(req)
+			})
+		}
 	default:
 		return E.NewAny("unknown dns.type: ", c.Type)
+	}
+
+	if len(dnsExchanges) > 0 {
+		dnsExchange = dnsExchanges[0]
 	}
 
 	if c.SingleFlight {
@@ -309,7 +421,7 @@ func doDNSResolve(domain string, mode DNSMode, cacheTTL time.Duration) (string, 
 		msg.Extra = []dns.RR{edns0SubnetOpt}
 	}
 
-	resp, err := dnsExchange(msg)
+	resp, err := exchangeMsg(msg)
 	if err != nil {
 		return "", E.WithStr("dns exchange", err)
 	}
@@ -330,7 +442,7 @@ func doDNSResolve(domain string, mode DNSMode, cacheTTL time.Duration) (string, 
 	case DNSModePreferIPv4:
 		if ip = pickFirstARecord(resp.Answer); ip == nil {
 			msg.SetQuestion(domain+".", dns.TypeAAAA)
-			resp, err2 := dnsExchange(msg)
+			resp, err2 := exchangeMsg(msg)
 			if err2 != nil {
 				return "", E.WithStr("dns exchange", E.Join(err, err2))
 			}
@@ -344,7 +456,7 @@ func doDNSResolve(domain string, mode DNSMode, cacheTTL time.Duration) (string, 
 	case DNSModePreferIPv6:
 		if ip = pickFirstAAAARecord(resp.Answer); ip == nil {
 			msg.SetQuestion(domain+".", dns.TypeA)
-			resp, err2 := dnsExchange(msg)
+			resp, err2 := exchangeMsg(msg)
 			if err2 != nil {
 				return "", E.WithStr("dns exchange", E.Join(err, err2))
 			}
@@ -532,4 +644,90 @@ func hasEDNS0Subnet(resp *dns.Msg) bool {
 		}
 	}
 	return false
+}
+
+// doQClient 按 RFC 9250 实现 DoQ：每条查询独占一条 QUIC 流，消息不带长度前缀，
+// 写后关闭写侧，读到对端 FIN 即视为响应结束。连接在端点复用，出错时重连一次。
+type doQClient struct {
+	endpoint string
+	server   string
+	timeout  time.Duration
+	mu       sync.Mutex
+	conn     *quic.Conn
+}
+
+func newDoQClient(endpoint string) *doQClient {
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		host = endpoint
+	}
+	return &doQClient{
+		endpoint: endpoint,
+		server:   host,
+		timeout:  6 * time.Second,
+	}
+}
+
+func (q *doQClient) dial(ctx context.Context) (*quic.Conn, error) {
+	tlsConf := &tls.Config{
+		ServerName: q.server,
+		NextProtos: []string{"doq"},
+		MinVersion: tls.VersionTLS13,
+	}
+	conf := &quic.Config{HandshakeIdleTimeout: q.timeout}
+	return quic.DialAddr(ctx, q.endpoint, tlsConf, conf)
+}
+
+func (q *doQClient) exchange(req *dns.Msg) (resp *dns.Msg, err error) {
+	wire, err := req.Pack()
+	if err != nil {
+		return nil, E.WithStr("pack dns request", err)
+	}
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), q.timeout)
+	defer cancel()
+
+	if q.conn == nil {
+		q.conn, err = q.dial(ctx)
+		if err != nil {
+			return nil, E.WithStr("quic dial", err)
+		}
+	}
+
+	stream, err := q.conn.OpenStreamSync(ctx)
+	if err != nil {
+		_ = q.conn.CloseWithError(0, "stream open failed")
+		q.conn = nil
+		q.conn, err = q.dial(ctx)
+		if err != nil {
+			return nil, E.WithStr("quic redial", err)
+		}
+		stream, err = q.conn.OpenStreamSync(ctx)
+		if err != nil {
+			return nil, E.WithStr("quic open stream", err)
+		}
+	}
+
+	if _, err = stream.Write(wire); err != nil {
+		_ = q.conn.CloseWithError(0, "write failed")
+		q.conn = nil
+		return nil, E.WithStr("quic write", err)
+	}
+	if err = stream.Close(); err != nil {
+		return nil, E.WithStr("quic close write", err)
+	}
+	respWire, err := io.ReadAll(stream)
+	if err != nil {
+		_ = q.conn.CloseWithError(0, "read failed")
+		q.conn = nil
+		return nil, E.WithStr("quic read", err)
+	}
+	resp = new(dns.Msg)
+	if err = resp.Unpack(respWire); err != nil {
+		return nil, E.WithStr("unpack dns response", err)
+	}
+	return resp, nil
 }

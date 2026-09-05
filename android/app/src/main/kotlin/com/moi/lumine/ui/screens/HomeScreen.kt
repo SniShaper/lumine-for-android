@@ -46,8 +46,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -56,6 +60,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.moi.lumine.ui.ConfigViewModel
 import com.moi.lumine.ui.Screen
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import org.json.JSONObject
 
 @Composable
 fun HomeScreen(
@@ -104,6 +111,10 @@ fun HomeScreen(
             }
         }
 
+        item {
+            SessionStatsLine(active = isConnected)
+        }
+
         item { SectionLabel("配置") }
         item {
             MenuCard(
@@ -139,6 +150,43 @@ private fun SectionLabel(text: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
     )
+}
+
+@Composable
+private fun SessionStatsLine(active: Boolean) {
+    var line by remember { mutableStateOf("") }
+    LaunchedEffect(active) {
+        while (active && isActive) {
+            runCatching {
+                val json = JSONObject(mobile.Mobile.getStats())
+                val down = json.optLong("down", 0L)
+                val up = json.optLong("up", 0L)
+                val blocked = json.optLong("blocked", 0L)
+                val tcp = json.optLong("tcp_conns", 0L)
+                val udp = json.optLong("udp_conns", 0L)
+                line = "↓ ${formatBytes(homeBytes = down)}  ↑ ${formatBytes(homeBytes = up)}  " +
+                    "阻断 $blocked  TCP $tcp / UDP $udp"
+            }
+            delay(2000L)
+        }
+        if (!active) line = ""
+    }
+    if (line.isBlank()) return
+    Text(
+        text = line,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+    )
+}
+
+private fun formatBytes(homeBytes: Long): String {
+    if (homeBytes < 0) return "-"
+    if (homeBytes < 1024L) return "$homeBytes B"
+    if (homeBytes < 1024L * 1024L) return String.format("%.1f KB", homeBytes / 1024f)
+    return String.format("%.2f MB", homeBytes / (1024f * 1024f))
 }
 
 @Composable

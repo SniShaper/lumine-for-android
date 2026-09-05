@@ -49,6 +49,7 @@ func (p *LumineProxy) DialContext(ctx context.Context, m *metadata.Metadata) (ne
 		return nil, err
 	}
 	if plan.Blocked {
+		lumine.AddBlockedConn()
 		logger.Info("Connection blocked:", originHost)
 		return nil, fmt.Errorf("blocked by policy: %s", originHost)
 	}
@@ -60,6 +61,8 @@ func (p *LumineProxy) DialContext(ctx context.Context, m *metadata.Metadata) (ne
 		logger.Error("Connection failed:", err)
 		return nil, err
 	}
+	lumine.IncTCPConn()
+	conn = lumine.NewSessionConn(conn)
 
 	logDialPlan(logger, "TCP", plan, target)
 	switch plan.Policy.Mode {
@@ -82,9 +85,10 @@ func (p *LumineProxy) DialUDP(m *metadata.Metadata) (net.PacketConn, error) {
 		logger.Error("Open UDP packet conn:", err)
 		return nil, err
 	}
+	lumine.IncUDPConn()
 	logger.Debug("UDP relay ready for", m.DestinationAddress())
 	return &luminePacketConn{
-		PacketConn: newQueuedPacketConn(pc),
+		PacketConn: newQueuedPacketConn(lumine.NewSessionPacketConn(pc)),
 		logger:     logger,
 	}, nil
 }
@@ -126,6 +130,7 @@ func (pc *luminePacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		return 0, err
 	}
 	if plan.Blocked {
+		lumine.AddBlockedConn()
 		return 0, fmt.Errorf("blocked by policy: %s", originHost)
 	}
 

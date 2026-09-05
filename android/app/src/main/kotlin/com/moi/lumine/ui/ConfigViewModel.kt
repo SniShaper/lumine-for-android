@@ -32,6 +32,9 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedConfigDisplayName = MutableStateFlow(_selectedConfigName.value)
     val selectedConfigDisplayName: StateFlow<String> = _selectedConfigDisplayName
 
+    private val _disabledRuleKeys = MutableStateFlow<Set<String>>(emptySet())
+    val disabledRuleKeys: StateFlow<Set<String>> = _disabledRuleKeys
+
     private val _subscriptions = MutableStateFlow<List<SubscriptionProfile>>(emptyList())
     val subscriptions: StateFlow<List<SubscriptionProfile>> = _subscriptions
 
@@ -156,6 +159,7 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
                     repository.setSelectedConfigName(name)
                 }
                 updateSelectedConfigDisplayName()
+                _disabledRuleKeys.value = repository.disabledRuleKeys(_selectedConfigName.value)
             } else if (name != "config") {
                 applyConfig("config")
                 _subscriptionMessage.value = "配置 $name 不存在，已回退到默认配置"
@@ -171,6 +175,14 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateConfig(updated: LumineConfig) {
         _currentConfig.value = updated
+    }
+
+    fun setRuleEnabled(key: String, enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setRuleEnabled(_selectedConfigName.value, _currentConfig.value, key, enabled)
+            _disabledRuleKeys.value = repository.disabledRuleKeys(_selectedConfigName.value)
+            loadConfig(_selectedConfigName.value)
+        }
     }
 
     fun applyConfig(name: String) {
@@ -316,6 +328,21 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
     fun applySubscription(subscription: SubscriptionProfile) {
         applyConfig(subscription.configName)
         _subscriptionMessage.value = "已应用 ${subscription.name}"
+    }
+
+    suspend fun exportCurrentConfig(): ExportedLogFile {
+        return repository.exportConfigJson(_selectedConfigName.value, _currentConfig.value)
+    }
+
+    /** @return null 表示成功（已导入并选中），否则返回错误信息。 */
+    suspend fun importConfigUri(uri: Uri): String? {
+        val (error, configName) = repository.importConfigFromUri(uri)
+        if (error != null) {
+            return error
+        }
+        refreshConfigList()
+        configName?.let { loadConfig(it) }
+        return null
     }
 
     fun deleteSubscription(subscription: SubscriptionProfile) {

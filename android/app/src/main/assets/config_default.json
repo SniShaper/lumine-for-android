@@ -189,6 +189,363 @@
     },
     "lc-event.pixiv.net": {
       "host": "210.140.139.185"
+    },
+    "*amazon.co.jp": {
+      "mode": "tls-rf"
+    },
+    "*api.bbc.co.uk;*api.bbci.co.uk;*bbci.co.uk;*emp.bbc.co.uk;*r.bbci.co.uk": {
+      "mode": "tls-rf",
+      "dns_mode": "prefer_ipv4"
+    },
+    "*api.bbc.com": {
+      "mode": "tls-rf"
+    },
+    "*api.e-hentai.org": {
+      "mode": "tls-rf",
+      "host": "5.79.104.110"
+    },
+    "*audiomack.com": {
+      "mode": "tls-rf"
+    },
+    "*docs.github.com;*github.io;*githubassets.com": {
+      "mode": "tls-rf"
+    },
+    "*ehgt.org;*ehwiki.org": {
+      "mode": "tls-rf"
+    },
+    "*etsy.com": {
+      "mode": "tls-rf"
+    },
+    "*twitch.tv": {
+      "mode": "tls-rf"
+    },
+    "*imgur.com": {
+      "mode": "tls-rf"
+    },
+    "*nyaa.si": {
+      "mode": "tls-rf"
+    },
+    "*okx.com": {
+      "mode": "tls-rf",
+      "host": "8.212.101.92"
+    },
+    "*prod-publishers-content.s3.us-east-1.amazonaws.com": {
+      "mode": "tls-rf"
+    },
+    "*proton.me": {
+      "mode": "tls-rf"
+    },
+    "*quora.com": {
+      "mode": "tls-rf"
+    },
+    "*store.steampowered.com": {
+      "mode": "tls-rf"
+    },
+    "*upld.e-hentai.org;*upload.e-hentai.org": {
+      "mode": "tls-rf",
+      "host": "95.211.208.236"
+    },
+    "*fp.dropbox.com": {
+      "mode": "tls-rf"
+    },
+    "*assets.dropbox.com": {
+      "mode": "tls-rf"
+    },
+    "*external-content.duckduckgo.com": {
+      "mode": "tls-rf"
+    },
+    "*z-lib.sk;*z-library.sk": {
+      "mode": "tls-rf",
+      "host": "94.231.223.5"
+    },
+    "*steamcommunity.com": {
+      "mode": "tls-rf"
+    },
+    "*community.steamstatic.com": {
+      "mode": "tls-rf"
+    },
+    "*huggingface.co": {
+      "mode": "tls-rf"
+    },
+    "*news.ycombinator.com": {
+      "mode": "direct",
+      "host": "209.216.230.207"
+    },
+    "*rule34.com": {
+      "mode": "tls-rf"
+    },
+    "*matrix.org": {
+      "mode": "tls-rf"
+    },
+    "*ichef.bbci.co.uk": {
+      "mode": "tls-rf",
+      "dns_mode": "prefer_ipv4"
+    },
+    "*static.files.bbci.co.uk": {
+      "mode": "tls-rf"
+    },
+    "*dailymotion.com": {
+      "mode": "tls-rf",
+      "host": "195.8.215.137"
+    },
+    "*darioamodei.com;*liquid.ai;*together.ai;*www.upstage.ai": {
+      "mode": "direct",
+      "host": "198.202.211.2"
+    },
+    "*archive.ph;*archive.today": {
+      "mode": "tls-rf",
+      "host": "107.189.8.227"
+    },
+    "*cdn.bsky.app;*events.bsky.app;*public.api.bsky.app;*web-cdn.bsky.app": {
+      "mode": "tls-rf"
+    },
+    "*video.bsky.app": {
+      "mode": "tls-rf"
+    },
+    "*deviantart.com": {
+      "mode": "tls-rf"
+    },
+    "*st.deviantart.net": {
+      "mode": "tls-rf"
+    },
+    "*annas-archive.gd": {
+      "mode": "tls-rf"
+    },
+    "*annas-archive.gl": {
+      "mode": "tls-rf"
+    },
+    "*annas-archive.pk": {
+      "mode": "tls-rf"
+    },
+    "*hitomi.la": {
+      "mode": "tls-rf"
+    },
+    "*dlsite.ne.jp": {
+      "mode": "tls-rf",
+      "host": "210.140.64.86"
+    },
+    "*mastodon.social": {
+      "mode": "tls-rf",
+      "host": "151.101.65.55"
+    },
+    "*files.mastodon.social": {
+      "mode": "tls-rf",
+      "host": "151.101.129.91"
+    },
+    "*yande.re": {
+      "mode": "tls-rf",
+      "host": "198.251.89.183"
+    },
+    "*urbandictionary.com": {
+      "mode": "tls-rf",
+      "host": "138.199.46.68"
+    },
+    "*bgithub.xyz": {
+      "mode": "tls-rf"
+    },
+    "*octocaptcha.com": {
+      "mode": "tls-rf",
+      "host": "20.27.177.113"
+    },
+    "*news.nextapple.com;*static-cdn.nextapple.tw;*static.nextapple.tw": {
+      "mode": "tls-rf",
+      "host": "3.164.143.10"
+    },
+    "*nextapple.com": {
+      "mode": "tls-rf",
+      "host": "198.49.23.144"
+    },
+    "*chat.mistral.ai;*element.io;*i-scmp.com;*playboyplus.com;*scmp.com": {
+      "mode": "tls-rf"
+    },
+    "*discord.gg;*ws.chatgpt.com": {
+      "mode": "tls-rf"
+    },
+    "*realm-a.x.com;*realm-b.x.com": {
+      "mode": "tls-rf"
+    },
+    "*chat-ws.x.com": {
+      "mode": "tls-rf"
+    },
+    "*meta.ai": {
+      "mode": "tls-rf",
+      "nat64_prefix": "2001:67c:2960:6464::"
+    },
+    "*nicovideo.jp": {
+      "mode": "tls-rf"
+    },
+    "*static.neon-ssr.dailymotion.com": {
+      "mode": "tls-rf"
+    },
+    "*aws.duplex.snapchat.com;*static.snapchat.com;*story.snapchat.com": {
+      "mode": "tls-rf"
+    },
+    "*cdn2.suno.ai;*s.prod.suno.com": {
+      "mode": "direct"
+    },
+    "*reuters.com;*reuters.tv": {
+      "mode": "tls-rf"
+    },
+    "*indiatimes.com": {
+      "mode": "tls-rf"
+    },
+    "*lemonde.fr": {
+      "mode": "tls-rf"
+    },
+    "*assets-decodeurs.lemonde.fr": {
+      "mode": "tls-rf"
+    },
+    "*asia.nikkei.com": {
+      "mode": "tls-rf"
+    },
+    "*rule34video.com": {
+      "mode": "tls-rf",
+      "host": "190.115.31.243"
+    },
+    "*archive.li": {
+      "mode": "tls-rf",
+      "host": "103.70.115.11"
+    },
+    "*pwc.com": {
+      "mode": "tls-rf"
+    },
+    "*istockphoto.com": {
+      "mode": "tls-rf"
+    },
+    "*cms-assets.xboxservices.com": {
+      "mode": "direct",
+      "host": "150.171.110.131"
+    },
+    "*deepmind.google": {
+      "mode": "tls-rf",
+      "host": "216.239.32.21"
+    },
+    "*restofworld.org": {
+      "mode": "tls-rf"
+    },
+    "*fastly.restofworld.org": {
+      "mode": "tls-rf"
+    },
+    "*library.kiwix.org": {
+      "mode": "tls-rf",
+      "host": "51.159.101.162"
+    },
+    "*avatars.githubusercontent.com;*camo.githubusercontent.com;*marketplace-screenshots.githubusercontent.com;*objects.githubusercontent.com;*release-assets.githubusercontent.com": {
+      "mode": "tls-rf",
+      "host": "13.143.65.4"
+    },
+    "*private-user-images.githubusercontent.com": {
+      "mode": "tls-rf"
+    },
+    "*raw.githubusercontent.com": {
+      "mode": "tls-rf",
+      "host": "151.101.192.133"
+    },
+    "*emp.bbc.co.uk;*files.bbci.co.uk;*ichef.bbci.co.uk": {
+      "mode": "tls-rf"
+    },
+    "*archive-it.org": {
+      "mode": "tls-rf",
+      "host": "207.241.224.44"
+    },
+    "*speedtest.net": {
+      "mode": "direct",
+      "host": "151.101.2.219"
+    },
+    "*bangumi.tv": {
+      "mode": "tls-rf"
+    },
+    "*kavin.rocks": {
+      "mode": "tls-rf",
+      "host": "76.76.21.21"
+    },
+    "*nadeko.net;*nerdvpn.de;*redlib.perennialte.ch": {
+      "mode": "tls-rf"
+    },
+    "*deepwiki.com": {
+      "mode": "direct",
+      "host": "64.29.17.1"
+    },
+    "*waze.com": {
+      "mode": "tls-rf",
+      "host": "130.211.9.172"
+    },
+    "*suggest.perplexity.ai": {
+      "mode": "tls-rf"
+    },
+    "*arxiv.org": {
+      "mode": "direct",
+      "host": "151.101.131.42"
+    },
+    "*blog.google": {
+      "mode": "tls-rf",
+      "dns_mode": "prefer_ipv6"
+    },
+    "*blog.adeelahmad.net;*pub.towardsai.net;*www.huchenfeng.live": {
+      "mode": "tls-rf"
+    },
+    "*libgen.li": {
+      "mode": "tls-rf"
+    },
+    "*tomtunguz.com": {
+      "mode": "direct",
+      "host": "216.24.57.2"
+    },
+    "*clients6.google.com": {
+      "mode": "tls-rf",
+      "host": "47.102.115.14"
+    },
+    "*yastatic.net": {
+      "mode": "direct",
+      "dns_mode": "prefer_ipv6"
+    },
+    "*bitbucket.org": {
+      "mode": "direct"
+    },
+    "*learn-video.azurefd.net": {
+      "mode": "direct",
+      "host": "150.171.110.135"
+    },
+    "*arena.ai;*character.ai;*chatgpt.com;*claude.ai;*grok.com;*openai.com;*poe.com;*x.ai": {
+      "mode": "tls-rf",
+      "nat64_prefix": "2001:67c:2960:6464::"
+    },
+    "*admin.microsoft.com;*bingapis.com;*login.live.com;*login.microsoftonline.com;*m365.cloud.microsoft;*strate.office.com": {
+      "mode": "direct",
+      "nat64_prefix": "2001:67c:2960:6464::"
+    },
+    "*tch.poe.com": {
+      "mode": "tls-rf"
+    },
+    "*cdn.openai.com;*go.trouter.skype.com;*substrate.office.com": {
+      "mode": "tls-rf"
+    },
+    "*bing.com": {
+      "mode": "direct",
+      "host": "150.171.28.10"
+    },
+    "*office.com;*outlook.com;*sharepoint.com;*substrate.office.com;*www.office.com;*www.outlook.com": {
+      "mode": "direct"
+    },
+    "*go.microsoft.com;*microsoft.com;*support.microsoft.com;*visualstudio.com;*www.microsoft.com": {
+      "mode": "direct"
+    },
+    "*nav-edge.smartscreen.microsoft.com": {
+      "mode": "direct",
+      "host": "20.210.53.246"
+    },
+    "*vrchat.com": {
+      "mode": "tls-rf"
+    },
+    "*docker.io;*registry.hub.docker.com": {
+      "mode": "tls-rf"
+    },
+    "*twimg.com;*x.com": {
+      "mode": "tls-rf",
+      "host": "151.101.2.146"
+    },
+    "*abs.twimg.com": {
+      "mode": "tls-rf"
     }
   }
 }

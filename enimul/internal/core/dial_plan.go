@@ -135,6 +135,20 @@ func PlanRequest(req RequestContext, logger log.Logger) (DialPlan, error) {
 		}
 	}
 
+	// NAT64: 将选定的目标（或 host 覆盖后的域名）经策略前缀映射到 IPv6。
+	// 分片/直连/desync 等模式均可叠加使用，语义与桌面版 SniShaper 一致。
+	// fake-IP 未能还原出域名的请求不参与映射，避免把虚拟地址映射成无意义 IPv6。
+	if isNAT64Enabled(policy) && (recoveredDomain != "" || !isFakeIPAddress(dstHost)) {
+		mapped, err := planNat64(logger, dstHost, policy)
+		if err != nil {
+			if logger != nil {
+				logger.Error("NAT64 plan:", err)
+			}
+			return DialPlan{}, err
+		}
+		dstHost = mapped
+	}
+
 	targetPort := req.Port
 	if policy.Port > 0 {
 		targetPort = policy.Port

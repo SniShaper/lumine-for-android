@@ -180,6 +180,7 @@ type Policy struct {
 	ConnectTimeout    time.Duration
 	Host              string
 	MapTo             string
+	Nat64Prefix       string
 	Port              int
 	HttpStatus        int
 	TLS13Only         TriBool
@@ -208,6 +209,7 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 		ConnectTimeout    *string           `json:"connect_timeout"`
 		Host              *string           `json:"host"`
 		MapTo             *string           `json:"map_to"`
+		Nat64Prefix       *string           `json:"nat64_prefix"`
 		Port              *uint16           `json:"port"`
 		DNSMode           DNSMode           `json:"dns_mode"`
 		DNSCacheTTL       *string           `json:"dns_cache_ttl"`
@@ -256,6 +258,17 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 		return E.New("map_to cannot be `\\x00`")
 	} else {
 		p.MapTo = *tmp.MapTo
+	}
+
+	if tmp.Nat64Prefix == nil {
+		p.Nat64Prefix = ""
+	} else {
+		prefix := strings.TrimSpace(*tmp.Nat64Prefix)
+		if prefix == "\x00" || prefix == "" || prefix == "off" {
+			p.Nat64Prefix = ""
+		} else {
+			p.Nat64Prefix = prefix
+		}
 	}
 
 	if tmp.Port == nil {
@@ -379,7 +392,10 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 }
 
 func (p Policy) String() string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 16)
+	if p.Nat64Prefix != "" {
+		fields = append(fields, "nat64="+p.Nat64Prefix)
+	}
 	if p.ConnectTimeout != 0 {
 		fields = append(fields, "timeout="+p.ConnectTimeout.String())
 	}
@@ -474,6 +490,9 @@ func mergePolicies(policies ...*Policy) *Policy {
 		if merged.MapTo == unsetString && p.MapTo != unsetString {
 			merged.MapTo = p.MapTo
 		}
+		if merged.Nat64Prefix == "" && p.Nat64Prefix != "" {
+			merged.Nat64Prefix = p.Nat64Prefix
+		}
 		if merged.Port == unsetInt && p.Port != unsetInt {
 			merged.Port = p.Port
 		}
@@ -558,11 +577,10 @@ func getIPPolicy(ip string) (*Policy, bool) {
 	return ipMatcher.Find(ip)
 }
 
-var dohConnPolicy *Policy
-
 type policyConn struct {
 	net.Conn
 	handled bool
+	policy  *Policy
 }
 
 func (c *policyConn) Write(b []byte) (n int, err error) {
@@ -576,35 +594,38 @@ func (c *policyConn) Write(b []byte) (n int, err error) {
 	if err != nil {
 		return
 	}
-	if dohConnPolicy.TLS13Only.IsTrue() && !hasKeyShare {
+	if c.policy == nil {
+		return c.Conn.Write(b)
+	}
+	if c.policy.TLS13Only.IsTrue() && !hasKeyShare {
 		return 0, E.New("not a TLS 1.3 ClientHello")
 	}
 	if sniStart == -1 {
 		return c.Conn.Write(b)
 	}
-	switch dohConnPolicy.Mode {
+	switch c.policy.Mode {
 	case ModeDirect, ModeRaw:
 		return c.Conn.Write(b)
 	case ModeTTLD:
 		raddr := c.RemoteAddr().String()
 		ipv6 := raddr[0] == '['
-		ttl, err := getFakeTTL(nil, dohConnPolicy, raddr, ipv6)
+		ttl, err := getFakeTTL(nil, c.policy, raddr, ipv6)
 		if err != nil {
 			return 0, E.WithStr("get fake ttl", err)
 		}
 		if err = desyncSend(
 			c.Conn, ipv6, b,
-			sniStart, sniLen, ttl, dohConnPolicy.FakeSleep,
+			sniStart, sniLen, ttl, c.policy.FakeSleep,
 		); err != nil {
 			return 0, E.WithStr("ttl desync", err)
 		}
 	case ModeTLSRF:
 		if err = sendRecords(c.Conn, b, sniStart, sniLen,
-			dohConnPolicy.NumRecords, dohConnPolicy.NumSegments,
-			dohConnPolicy.MinorVer,
-			dohConnPolicy.OOB.IsTrue(), dohConnPolicy.OOBEx.IsTrue(),
-			dohConnPolicy.WaitForAck.IsTrue(),
-			dohConnPolicy.SendInterval); err != nil {
+			c.policy.NumRecords, c.policy.NumSegments,
+			c.policy.MinorVer,
+			c.policy.OOB.IsTrue(), c.policy.OOBEx.IsTrue(),
+			c.policy.WaitForAck.IsTrue(),
+			c.policy.SendInterval); err != nil {
 			return 0, E.WithStr("tls fragment", err)
 		}
 	}
@@ -612,20 +633,20 @@ func (c *policyConn) Write(b []byte) (n int, err error) {
 	return
 }
 
-func genDoHDialFunc() (func(ctx context.Context, network, address string) (net.Conn, error), error) {
-	parsedURL, err := url.Parse(dnsAddr)
+func genDoHDialFuncFor(dohURL string) (func(ctx context.Context, network, address string) (net.Conn, error), error) {
+	parsedURL, err := url.Parse(dohURL)
 	if err != nil {
 		return nil, E.WithStr("invalid DoH URL", err)
 	}
 	host := parsedURL.Hostname()
-	dohConnPolicy = new(Policy)
+	pol := new(Policy)
 	if net.ParseIP(host) != nil {
 		var ipPolicy *Policy
 		host, ipPolicy, err = ipRedirect(nil, host)
 		if ipPolicy == nil {
-			dohConnPolicy = &defaultPolicy
+			pol = &defaultPolicy
 		} else {
-			dohConnPolicy = mergePolicies(ipPolicy, &defaultPolicy)
+			pol = mergePolicies(ipPolicy, &defaultPolicy)
 		}
 		if err != nil {
 			return nil, E.WithStr("ip redirect", err)
@@ -633,11 +654,11 @@ func genDoHDialFunc() (func(ctx context.Context, network, address string) (net.C
 	} else {
 		domainPolicy, foundDomainPolicy := domainMatcher.Find(host)
 		if foundDomainPolicy {
-			dohConnPolicy = mergePolicies(domainPolicy, &defaultPolicy)
+			pol = mergePolicies(domainPolicy, &defaultPolicy)
 		} else {
-			dohConnPolicy = &defaultPolicy
+			pol = &defaultPolicy
 		}
-		policyHost := dohConnPolicy.Host
+		policyHost := pol.Host
 		if strings.HasPrefix(policyHost, noRedirectPrefix) {
 			policyHost = policyHost[1:]
 		}
@@ -667,7 +688,7 @@ func genDoHDialFunc() (func(ctx context.Context, network, address string) (net.C
 			return nil, err
 		}
 	}
-	switch dohConnPolicy.Mode {
+	switch pol.Mode {
 	case ModeBlock, ModeTLSAlert:
 		return nil, E.New("the mode of the DoH cannot be `block`")
 	}
@@ -675,14 +696,14 @@ func genDoHDialFunc() (func(ctx context.Context, network, address string) (net.C
 	if port == "" {
 		port = "443"
 	}
-	if dohConnPolicy.Port != unsetInt {
-		port = F.Int(dohConnPolicy.Port)
+	if pol.Port != unsetInt {
+		port = F.Int(pol.Port)
 	}
 	addr := net.JoinHostPort(host, port)
 	return func(ctx context.Context, network, _ string) (net.Conn, error) {
-		conn, err := dial.DialTimeout(ctx, network, addr, dohConnPolicy.ConnectTimeout)
+		conn, err := dial.DialTimeout(ctx, network, addr, pol.ConnectTimeout)
 		if err == nil {
-			return &policyConn{Conn: conn}, nil
+			return &policyConn{Conn: conn, policy: pol}, nil
 		}
 		return nil, err
 	}, nil

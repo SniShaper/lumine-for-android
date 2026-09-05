@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.moi.lumine.model.Policy
+import com.moi.lumine.network.NetworkMonitor
 import com.moi.lumine.ui.ConfigViewModel
 import com.moi.lumine.ui.components.RadioOptionRow
 import com.moi.lumine.ui.components.SectionHeader
@@ -71,6 +72,8 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
     }
     val isNewRule = existingPolicy == null
     val initialPolicy = existingPolicy ?: Policy()
+    val networkStatus by NetworkMonitor.status.collectAsState()
+    val ipv6Available = networkStatus.ipv6Available != false
 
     var mode by remember(ruleKey, initialPolicy) { mutableStateOf(initialPolicy.mode ?: "tls-rf") }
     var host by remember(ruleKey, initialPolicy) { mutableStateOf(initialPolicy.host ?: "") }
@@ -81,6 +84,9 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
     }
     var nat64Prefix by remember(ruleKey, initialPolicy) {
         mutableStateOf(initialPolicy.nat64Prefix ?: DEFAULT_NAT64_PREFIX)
+    }
+    var dnsMode by remember(ruleKey, initialPolicy) {
+        mutableStateOf(initialPolicy.dnsMode ?: "")
     }
     var numRecordsText by remember(ruleKey, initialPolicy) {
         mutableStateOf(initialPolicy.numRecords?.toString() ?: "")
@@ -113,6 +119,7 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                             mode = mode,
                             host = host.ifEmpty { null },
                             mapTo = mapTo.ifEmpty { null },
+                            dnsMode = dnsMode.ifEmpty { null },
                             tls13Only = tls13Only,
                             nat64Prefix = if (nat64Enabled && nat64Prefix.isNotBlank()) {
                                 nat64Prefix.trim()

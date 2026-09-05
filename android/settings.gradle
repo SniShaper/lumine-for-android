@@ -1,6 +1,4 @@
 // android/settings.gradle
-rootProject.name = "LumineAndroid"
-
 pluginManagement {
     repositories {
         // 优先使用腾讯云镜像以提高国内 CI/Runner 的依赖可用性
@@ -31,4 +29,5 @@ dependencyResolutionManagement {
     }
 }
 
+rootProject.name = "LumineAndroid"
 include ':app'

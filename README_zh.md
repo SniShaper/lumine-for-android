@@ -2,25 +2,13 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat\&logo=android\&logoColor=white)
-
-![许可证](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat\&logo=open-source-initiative\&label=许可证)
-
-![GitHub Release](https://img.shields.io/github/v/release/SniShaper/lumine-for-android?style=flat\&logo=github\&label=版本)
-
-![GitHub Downloads](https://img.shields.io/github/downloads/SniShaper/lumine-for-android/total?style=flat\&logo=github\&label=下载量)
-
-![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat\&logo=git\&label=最后提交)
-
-![持续集成](https://img.shields.io/github/actions/workflow/status/SniShaper/lumine-for-android/android-release.yml?style=flat\&logo=githubactions\&label=CI)
+[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat&logo=android&logoColor=white)](https://developer.android.com/) [![许可证](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat&logo=open-source-initiative&label=许可证)](LICENSE) [![GitHub Release](https://img.shields.io/github/v/release/SniShaper/lumine-for-android?style=flat&logo=github&label=版本)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub Downloads](https://img.shields.io/github/downloads/SniShaper/lumine-for-android/total?style=flat&logo=github&label=下载量)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat&logo=git&label=最后提交)](https://github.com/SniShaper/lumine-for-android/commits/main) [![持续集成](https://img.shields.io/github/actions/workflow/status/SniShaper/lumine-for-android/android-release.yml?style=flat&logo=githubactions&label=CI)](https://github.com/SniShaper/lumine-for-android/actions)
 
 **Lumine** 是基于 [enimul](https://github.com/lzpls/enimul) Go 核心（前 [lumine](https://codeberg.org/PonyCW26/lumine)）的 Android 端 Clash 风格本地代理 / VPN 客户端。它通过 Android `VPNService`（TUN）隧道接管设备流量，并按配置规则在本地完成转发与分流。
 
 界面采用 **Kotlin + Jetpack Compose** 原生构建，遵循 **Material Design 3** 规范并支持动态取色；Go 核心经 `gomobile` 编译为单个 AAR 接入，无任何 WebView 内嵌。本项目是 [SniShaper](https://github.com/SnishaperTeam/SniShaper) 代理项目的移动端配套版本。
 
 > 需要桌面版？参见 **[SniShaper](https://github.com/SnishaperTeam/SniShaper)** —— 基于相同路由理念的 Windows / Linux 代理客户端，另含无图形界面的 headless CLI 版本。
-
-
 
 ---
 
@@ -43,16 +31,16 @@
 
 前往[最新版本](https://github.com/SniShaper/lumine-for-android/releases)下载与设备 ABI 匹配的 APK，按提示允许「安装未知来源应用」即可：
 
-| ABI           | 常见设备                  |
-| ------------- | --------------------- |
-| `arm64-v8a`   | 2017 年后的主流手机 / 平板（推荐） |
-| `armeabi-v7a` | 较老的 32 位设备            |
-| `x86_64`      | x86_64 模拟器，如 MuMu、雷电  |
-| `x86`         | 旧版 x86 模拟器            |
+| ABI | 常见设备 |
+| --- | --- |
+| `arm64-v8a` | 2017 年后的主流手机 / 平板（推荐） |
+| `armeabi-v7a` | 较老的 32 位设备 |
+| `x86_64` | x86_64 模拟器，如 MuMu、雷电 |
+| `x86` | 旧版 x86 模拟器 |
 
 ### 从 F-Droid 安装
 
-
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on-zh-cn.png" alt="Get it on F-Droid" height="75">](https://f-droid.org/packages/com.moi.lumine)
 
 包名：`com.moi.lumine`。
 
@@ -97,11 +85,11 @@ Makefile            make android → android/app/libs/LumineCore.aar
 
 ### 构建产物矩阵
 
-| 类型          | 产物                                                                         | 说明                                                        |
-| ----------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Debug APK   | `android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`              | 仅 arm64，日常开发使用                                            |
+| 类型 | 产物 | 说明 |
+| --- | --- | --- |
+| Debug APK | `android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk` | 仅 arm64，日常开发使用 |
 | Release APK | `android/app/build/outputs/apk/release/app-<abi>-release[(-unsigned)].apk` | 4 个 ABI 分包：`arm64-v8a` / `armeabi-v7a` / `x86` / `x86_64` |
-| Go 核心 AAR   | `android/app/libs/LumineCore.aar`                                          | `gomobile bind` 产物，发布流水线中重建                               |
+| Go 核心 AAR | `android/app/libs/LumineCore.aar` | `gomobile bind` 产物，发布流水线中重建 |
 
 ### 构建 Android APK
 
@@ -168,31 +156,29 @@ make android
 
 Lumine 作为 SniShaper 项目体系的一部分进行开发（参见 [SniShaperTeam 组织](https://github.com/SniShaperTeam/)）。感谢所有对本仓库做出贡献的开发者：
 
-<div align="center">  
-<a href="https://github.com/SniShaper/lumine-for-android/graphs/contributors" target="\_blank">  
-<img src="https://contrib.rocks/image?repo=SniShaper/lumine-for-android" alt="Contributors" />  
-</a>  
+<div align="center">
+<a href="https://github.com/SniShaper/lumine-for-android/graphs/contributors" target="_blank">
+<img src="https://contrib.rocks/image?repo=SniShaper/lumine-for-android" alt="Contributors" />
+</a>
 </div>
 
 ## 星标历史
 
-<a href="https://www.star-history.com/?repos=SniShaper/lumine-for-android\&type=date">  
- <picture>  
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=SniShaper/lumine-for-android\&type=date\&theme=dark\&legend=top-left" />  
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=SniShaper/lumine-for-android\&type=date\&theme=light\&legend=top-left" />  
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=SniShaper/lumine-for-android\&type=date\&legend=top-left" />  
- </picture>  
+<a href="https://www.star-history.com/?repos=snishaper%2Flumine-for-android&type=date&legend=top-left">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=snishaper/lumine-for-android&type=date&theme=dark&legend=top-left" />
+<source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=snishaper/lumine-for-android&type=date&legend=top-left" />
+<img alt="Star History Chart" src="https://api.star-history.com/chart?repos=snishaper/lumine-for-android&type=date&legend=top-left" />
+</picture>
 </a>
 
 ---
 
 ## 项目活跃度
 
-![GitHub contributors](https://img.shields.io/github/contributors/SniShaper/lumine-for-android?style=flat\&label=贡献者)
-
-![GitHub commit activity](https://img.shields.io/github/commit-activity/m/SniShaper/lumine-for-android?style=flat\&label=月均提交)
-
-![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat\&label=最近提交)
+[![GitHub contributors](https://img.shields.io/github/contributors/SniShaper/lumine-for-android?style=flat&label=贡献者)](https://github.com/SniShaper/lumine-for-android/graphs/contributors)
+[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/SniShaper/lumine-for-android?style=flat&label=月均提交)](https://github.com/SniShaper/lumine-for-android/graphs/contributors)
+[![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat&label=最近提交)](https://github.com/SniShaper/lumine-for-android/commits/main)
 
 ---
 

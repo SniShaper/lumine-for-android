@@ -164,12 +164,12 @@ Lumine is developed as part of the SniShaper project family ([SniShaperTeam](htt
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=SniShaper/lumine-for-android&type=date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=SniShaper/lumine-for-android&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=SniShaper/lumine-for-android&type=date&theme=light&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=SniShaper/lumine-for-android&type=date&legend=top-left" />
- </picture>
+<a href="https://www.star-history.com/?repos=snishaper%2Flumine-for-android&type=date&legend=top-left">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=snishaper/lumine-for-android&type=date&theme=dark&legend=top-left" />
+<source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=snishaper/lumine-for-android&type=date&legend=top-left" />
+<img alt="Star History Chart" src="https://api.star-history.com/chart?repos=snishaper/lumine-for-android&type=date&legend=top-left" />
+</picture>
 </a>
 
 ---

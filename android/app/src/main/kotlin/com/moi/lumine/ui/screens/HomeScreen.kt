@@ -115,28 +115,30 @@ fun HomeScreen(
             SessionStatsLine(active = isConnected)
         }
 
-        item { SectionLabel("配置") }
+        item { SectionLabel("概览") }
+
+        item { SectionLabel("代理") }
         item {
             MenuCard(
-                title = "配置订阅",
+                title = "代理 · 配置订阅",
                 subtitle = "当前使用：$selectedConfig",
                 icon = Icons.Default.Description,
                 onClick = { navController.navigate(Screen.Subscriptions.route) }
             )
         }
 
-        item { SectionLabel("更多") }
+        item { SectionLabel("菜单") }
         item {
             MenuGroup {
                 MenuRow(Icons.Default.Tune, "规则") { navController.navigate(Screen.Rules.route) }
                 MenuDivider()
                 MenuRow(Icons.AutoMirrored.Filled.Assignment, "日志") { navController.navigate(Screen.Logs.route) }
                 MenuDivider()
-                MenuRow(Icons.Default.Security, "保活设置") { navController.navigate(Screen.KeepAlive.route) }
-                MenuDivider()
                 MenuRow(Icons.Default.Settings, "设置") { navController.navigate(Screen.Settings.route) }
                 MenuDivider()
                 MenuRow(Icons.Default.Info, "关于") { navController.navigate(Screen.About.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.Security, "保活设置") { navController.navigate(Screen.KeepAlive.route) }
             }
         }
     }

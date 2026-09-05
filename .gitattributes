@@ -2,6 +2,7 @@
 *.ps1 text eol=crlf
 *.gradle text eol=crlf
 *.properties text eol=crlf
+*.sh text eol=lf
 *.md text eol=lf
 *.go text eol=lf
 *.kt text eol=lf

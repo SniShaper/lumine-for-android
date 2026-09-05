@@ -1,16 +1,38 @@
 package com.moi.lumine.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.moi.lumine.ui.ConfigViewModel
+import com.moi.lumine.ui.components.RadioOptionRow
+import com.moi.lumine.ui.components.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +50,11 @@ fun GlobalSettingsScreen(navController: NavController, viewModel: ConfigViewMode
         topBar = {
             TopAppBar(
                 title = { Text("全局设置") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
                 actions = {
                     IconButton(onClick = {
                         val updatedConfig = config.copy(
@@ -46,29 +73,41 @@ fun GlobalSettingsScreen(navController: NavController, viewModel: ConfigViewMode
         Column(
             modifier = Modifier
                 .padding(innerPadding)
-                .padding(16.dp)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Text("核心设置", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(16.dp))
+            SectionHeader(
+                text = "核心设置",
+                modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
+            )
 
             OutlinedTextField(
                 value = dnsAddr,
                 onValueChange = { dnsAddr = it },
                 label = { Text("上游 DNS") },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("https://... 或 1.1.1.1:53") }
+                placeholder = { Text("https://... 或 1.1.1.1:53") },
+                supportingText = {
+                    Text("DNS 解析使用的上游服务器地址")
+                }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text("日志级别", style = MaterialTheme.typography.labelLarge)
-            val levels = listOf("DEBUG", "INFO", "WARN", "ERROR")
-            levels.forEach { level ->
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    RadioButton(selected = (logLevel == level), onClick = { logLevel = level })
-                    Text(level, modifier = Modifier.padding(start = 8.dp))
+            SectionHeader(
+                text = "日志级别",
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                val levels = listOf("DEBUG", "INFO", "WARN", "ERROR")
+                levels.forEach { level ->
+                    RadioOptionRow(
+                        label = level,
+                        selected = (logLevel == level),
+                        onClick = { logLevel = level }
+                    )
                 }
             }
         }

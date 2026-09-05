@@ -1,45 +1,61 @@
 package com.moi.lumine.ui.screens
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.moi.lumine.ui.ConfigViewModel
 import com.moi.lumine.ui.Screen
-
-private val HomePrimaryCardHeight = 100.dp
 
 @Composable
 fun HomeScreen(
@@ -51,12 +67,13 @@ fun HomeScreen(
     val isConnected by viewModel.isVpnActive.collectAsState()
     val selectedConfig by viewModel.selectedConfigDisplayName.collectAsState()
     val vpnStatus by viewModel.vpnStatus.collectAsState()
-    val context = LocalContext.current
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -64,7 +81,7 @@ fun HomeScreen(
                 Text(
                     text = "Lumine",
                     style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "本地代理 · 轻量 VPN 客户端",
@@ -98,11 +115,19 @@ fun HomeScreen(
         }
 
         item { SectionLabel("更多") }
-        item { MenuRow(Icons.Default.Tune, "规则") { navController.navigate(Screen.Rules.route) } }
-        item { MenuRow(Icons.AutoMirrored.Filled.Assignment, "日志") { navController.navigate(Screen.Logs.route) } }
-        item { MenuRow(Icons.Default.Security, "保活设置") { navController.navigate(Screen.KeepAlive.route) } }
-        item { MenuRow(Icons.Default.Settings, "设置") { navController.navigate(Screen.Settings.route) } }
-        item { MenuRow(Icons.Default.Info, "关于") { openProjectPage(context) } }
+        item {
+            MenuGroup {
+                MenuRow(Icons.Default.Tune, "规则") { navController.navigate(Screen.Rules.route) }
+                MenuDivider()
+                MenuRow(Icons.AutoMirrored.Filled.Assignment, "日志") { navController.navigate(Screen.Logs.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.Security, "保活设置") { navController.navigate(Screen.KeepAlive.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.Settings, "设置") { navController.navigate(Screen.Settings.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.Info, "关于") { navController.navigate(Screen.About.route) }
+            }
+        }
     }
 }
 
@@ -110,90 +135,66 @@ fun HomeScreen(
 private fun SectionLabel(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall,
+        style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 12.dp, bottom = 2.dp)
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
     )
 }
 
 @Composable
 fun StatusCard(isConnected: Boolean, statusMessage: String, isBusy: Boolean, onClick: () -> Unit) {
-    val summaryText = when {
-        statusMessage.isNotBlank() && (isConnected || isBusy) -> statusMessage
-        isConnected -> "服务运行中"
-        else -> "点此启动服务"
-    }
-    val detailText = statusMessage.takeUnless {
-        it.isBlank() || it == summaryText || isConnected || isBusy
-    }
+    val scheme = MaterialTheme.colorScheme
     val isActive = isConnected || isBusy
 
-    val startColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+    val containerColor by animateColorAsState(
+        targetValue = if (isActive) scheme.primaryContainer else scheme.surfaceContainerHigh,
         animationSpec = tween(durationMillis = 320),
-        label = "status_gradient_start"
-    )
-    val endColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
-        animationSpec = tween(durationMillis = 320),
-        label = "status_gradient_end"
+        label = "status_container"
     )
     val contentColor by animateColorAsState(
-        targetValue = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (isActive) scheme.onPrimaryContainer else scheme.onSurface,
         animationSpec = tween(durationMillis = 220),
         label = "status_content"
     )
-    val summaryColor by animateColorAsState(
-        targetValue = if (isActive) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-        animationSpec = tween(durationMillis = 320),
-        label = "status_summary"
-    )
-    val iconScale by animateFloatAsState(
-        targetValue = if (isActive) 1.08f else 1f,
-        animationSpec = tween(durationMillis = 320),
-        label = "status_icon_scale"
-    )
-    val cardElevation by animateDpAsState(
-        targetValue = if (isActive) 8.dp else 2.dp,
-        animationSpec = tween(durationMillis = 320),
-        label = "status_elevation"
-    )
+
+    val title = when {
+        isBusy && isConnected -> "正在断开代理"
+        isBusy -> "正在连接代理"
+        isConnected -> "代理已连接"
+        else -> "代理未连接"
+    }
+    val summary = when {
+        statusMessage.isNotBlank() -> statusMessage
+        isConnected -> "流量经本地隧道转发，保持后台即可继续代理。"
+        else -> "开启后流量将经 Lumine 隧道转发。"
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(HomePrimaryCardHeight)
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
+            .clickable(enabled = !isBusy, onClick = onClick),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Brush.linearGradient(listOf(startColor, endColor)))
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(52.dp),
                     shape = CircleShape,
-                    color = contentColor.copy(alpha = 0.16f)
+                    color = contentColor.copy(alpha = 0.12f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = if (isConnected) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                            imageVector = Icons.Default.PowerSettingsNew,
                             contentDescription = null,
-                            modifier = Modifier
-                                .size(34.dp)
-                                .graphicsLayer {
-                                    scaleX = iconScale
-                                    scaleY = iconScale
-                                },
+                            modifier = Modifier.size(26.dp),
                             tint = contentColor
                         )
                     }
@@ -201,74 +202,54 @@ fun StatusCard(isConnected: Boolean, statusMessage: String, isBusy: Boolean, onC
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     AnimatedContent(
-                        targetState = if (isConnected) "已启动" else "已停止",
+                        targetState = title,
                         transitionSpec = { statusContentTransform() },
                         label = "status_title"
-                    ) { title ->
+                    ) { text ->
                         Text(
-                            text = title,
+                            text = text,
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
                             color = contentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                     AnimatedContent(
-                        targetState = summaryText,
+                        targetState = summary,
                         transitionSpec = { statusContentTransform() },
-                        label = "status_summary_text"
+                        label = "status_summary"
                     ) { text ->
                         Text(
                             text = text,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = summaryColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    if (detailText != null) {
-                        Text(
-                            text = detailText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = summaryColor,
-                            maxLines = 1,
+                            color = contentColor.copy(alpha = 0.78f),
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                if (isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = contentColor
+                Switch(
+                    checked = isConnected,
+                    onCheckedChange = null,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = scheme.onPrimaryContainer,
+                        checkedTrackColor = scheme.primary,
+                        uncheckedThumbColor = scheme.outline,
+                        uncheckedTrackColor = scheme.surfaceContainerHighest,
+                        uncheckedBorderColor = scheme.outline
                     )
-                }
-                StatusPill(isConnected = isConnected, isBusy = isBusy, tint = contentColor)
+                )
+            }
+            if (isBusy) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = scheme.primary
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun StatusPill(isConnected: Boolean, isBusy: Boolean, tint: Color) {
-    val label = when {
-        isBusy -> "处理中"
-        isConnected -> "已连接"
-        else -> "离线"
-    }
-    Surface(
-        shape = CircleShape,
-        color = tint.copy(alpha = 0.18f)
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = tint,
-            fontWeight = FontWeight.SemiBold
-        )
     }
 }
 
@@ -277,24 +258,41 @@ fun MenuCard(title: String, subtitle: String, icon: ImageVector, onClick: () -> 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(HomePrimaryCardHeight)
             .clickable { onClick() },
+        shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconContainer(icon)
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
@@ -313,52 +311,65 @@ fun MenuCard(title: String, subtitle: String, icon: ImageVector, onClick: () -> 
 }
 
 @Composable
-private fun MenuRow(icon: ImageVector, title: String, onClick: () -> Unit) {
+private fun MenuGroup(content: @Composable () -> Unit) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconContainer(icon)
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        Column {
+            content()
         }
     }
 }
 
 @Composable
-private fun IconContainer(icon: ImageVector) {
-    Surface(
-        modifier = Modifier.size(44.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.secondaryContainer
+private fun MenuDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 72.dp),
+        color = MaterialTheme.colorScheme.outlineVariant
+    )
+}
+
+@Composable
+private fun MenuRow(icon: ImageVector, title: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
-            )
+        Surface(
+            modifier = Modifier.size(40.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
         }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -370,27 +381,3 @@ private fun statusContentTransform(): ContentTransform {
             slideOutVertically(animationSpec = tween(durationMillis = duration)) { -it / 4 })
 }
 
-private fun openProjectPage(context: Context) {
-    val uri = Uri.parse("https://github.com/coolapijust/lumine-for-android")
-    val baseIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-        addCategory(Intent.CATEGORY_BROWSABLE)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    val packageManager = context.packageManager
-    val candidates = packageManager.queryIntentActivities(baseIntent, 0)
-        .map { it.activityInfo.packageName }
-        .distinct()
-        .filter { it != context.packageName }
-
-    val intent = Intent(baseIntent)
-    val resolved = baseIntent.resolveActivity(packageManager)?.packageName
-    val preferredPackage = when {
-        resolved != null && resolved != context.packageName -> resolved
-        candidates.isNotEmpty() -> candidates.first()
-        else -> null
-    }
-    if (preferredPackage != null) {
-        intent.setPackage(preferredPackage)
-    }
-    runCatching { context.startActivity(intent) }
-}

@@ -56,7 +56,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -147,7 +146,7 @@ fun LogScreen(navController: NavController, viewModel: ConfigViewModel) {
                             Icons.Default.BugReport,
                             contentDescription = if (isLogCaptureEnabled) "停止捕捉日志" else "开始捕捉日志",
                             tint = if (isLogCaptureEnabled) {
-                                Color(0xFFB3261E)
+                                MaterialTheme.colorScheme.error
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             }
@@ -236,7 +235,12 @@ private fun LogSummaryCard(
     onExport: () -> Unit
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -247,7 +251,7 @@ private fun LogSummaryCard(
             Text(
                 text = "运行日志",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = statusMessage,
@@ -262,7 +266,7 @@ private fun LogSummaryCard(
                         imageVector = Icons.Default.BugReport,
                         contentDescription = null,
                         tint = if (isLogCaptureEnabled) {
-                            Color(0xFFB3261E)
+                            MaterialTheme.colorScheme.error
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         }
@@ -283,19 +287,36 @@ private fun LogSummaryCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SummaryChip(label = "总计 $totalCount", color = MaterialTheme.colorScheme.primaryContainer)
-                SummaryChip(label = "信息 $infoCount", color = Color(0xFFDDF4E4))
-                SummaryChip(label = "错误 $errorCount", color = Color(0xFFFFE0E0))
-                SummaryChip(label = "调试 $debugCount", color = Color(0xFFE7EAF3))
+                SummaryChip(
+                    label = "总计 $totalCount",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                SummaryChip(
+                    label = "信息 $infoCount",
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                SummaryChip(
+                    label = "错误 $errorCount",
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+                SummaryChip(
+                    label = "调试 $debugCount",
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SummaryChip(label: String, color: Color) {
+private fun SummaryChip(label: String, containerColor: Color, contentColor: Color) {
     Surface(
-        color = color,
+        color = containerColor,
+        contentColor = contentColor,
         shape = MaterialTheme.shapes.small
     ) {
         Text(
@@ -329,7 +350,12 @@ private fun LogFilterRow(
 @Composable
 private fun EmptyLogState(hasAnyLogs: Boolean, isRunning: Boolean) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -344,7 +370,7 @@ private fun EmptyLogState(hasAnyLogs: Boolean, isRunning: Boolean) {
             Text(
                 text = if (hasAnyLogs) "当前筛选条件下没有日志" else "还没有收到核心日志",
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = if (hasAnyLogs) "切换日志级别后再看一次。" else "点击右上角的捕捉按钮后，这里才会开始收集核心日志。",
@@ -357,9 +383,37 @@ private fun EmptyLogState(hasAnyLogs: Boolean, isRunning: Boolean) {
 
 @Composable
 private fun LogItem(log: RuntimeLogEntry) {
-    val visuals = remember(log.level) { log.level.visuals() }
+    val scheme = MaterialTheme.colorScheme
+    val visuals = when (log.level) {
+        RuntimeLogLevel.Error -> LogVisuals(
+            Icons.Default.Warning,
+            container = scheme.errorContainer,
+            accent = scheme.onErrorContainer
+        )
+        RuntimeLogLevel.Info -> LogVisuals(
+            Icons.Default.Info,
+            container = scheme.secondaryContainer,
+            accent = scheme.onSecondaryContainer
+        )
+        RuntimeLogLevel.Debug -> LogVisuals(
+            Icons.Default.BugReport,
+            container = scheme.tertiaryContainer,
+            accent = scheme.onTertiaryContainer
+        )
+        RuntimeLogLevel.Other -> LogVisuals(
+            Icons.Default.Info,
+            container = scheme.surfaceContainerLow,
+            accent = scheme.onSurfaceVariant
+        )
+    }
+
     Card(
-        colors = CardDefaults.cardColors(containerColor = visuals.background)
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = visuals.container,
+            contentColor = visuals.accent
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -384,36 +438,29 @@ private fun LogItem(log: RuntimeLogEntry) {
                     Text(
                         text = log.level.label(),
                         style = MaterialTheme.typography.labelMedium,
-                        color = visuals.accent,
-                        fontWeight = FontWeight.Bold
+                        color = visuals.accent
                     )
                     if (log.tag != null) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Text(
-                                text = log.tag,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = log.tag,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = visuals.accent.copy(alpha = 0.75f)
+                        )
                     }
                 }
                 Text(
                     text = log.message,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = visuals.accent.copy(alpha = 0.9f)
                 )
                 if (log.timestamp != null) {
                     Text(
                         text = log.timestamp,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = visuals.accent.copy(alpha = 0.7f)
                     )
                 }
             }
@@ -441,8 +488,8 @@ private enum class LogLevelFilter(val label: String) {
 
 private data class LogVisuals(
     val icon: ImageVector,
-    val accent: Color,
-    val background: Color
+    val container: Color,
+    val accent: Color
 )
 
 private fun RuntimeLogLevel.label(): String {
@@ -451,14 +498,5 @@ private fun RuntimeLogLevel.label(): String {
         RuntimeLogLevel.Error -> LogLevelFilter.Error.label
         RuntimeLogLevel.Debug -> LogLevelFilter.Debug.label
         RuntimeLogLevel.Other -> LogLevelFilter.Other.label
-    }
-}
-
-private fun RuntimeLogLevel.visuals(): LogVisuals {
-    return when (this) {
-        RuntimeLogLevel.Error -> LogVisuals(Icons.Default.Warning, Color(0xFFB3261E), Color(0xFFFFF1F1))
-        RuntimeLogLevel.Debug -> LogVisuals(Icons.Default.BugReport, Color(0xFF5D6B82), Color(0xFFF3F5F8))
-        RuntimeLogLevel.Info -> LogVisuals(Icons.Default.Info, Color(0xFF17663A), Color(0xFFF1FAF4))
-        RuntimeLogLevel.Other -> LogVisuals(Icons.Default.Info, Color(0xFF355070), Color(0xFFF7F7FA))
     }
 }

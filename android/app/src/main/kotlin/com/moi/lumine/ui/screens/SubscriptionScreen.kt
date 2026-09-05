@@ -57,7 +57,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -175,16 +174,26 @@ fun SubscriptionScreen(navController: NavController, viewModel: ConfigViewModel)
 private fun EmptySubscriptionState(modifier: Modifier = Modifier, onAdd: () -> Unit) {
     Box(modifier = modifier.padding(16.dp), contentAlignment = Alignment.Center) {
         Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("还没有配置订阅", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "添加一个 URL 订阅后，就可以像 Clash 一样在多个配置之间切换。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "还没有配置订阅",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "添加一个 URL 订阅后，就可以像 Clash 一样在多个配置之间切换。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium
                 )
                 Button(onClick = onAdd) {
                     Text("添加订阅")
@@ -204,29 +213,41 @@ private fun SubscriptionCard(
     onDelete: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val scheme = MaterialTheme.colorScheme
     val containerColor by animateColorAsState(
-        targetValue = when {
-            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-            isBusy -> MaterialTheme.colorScheme.surfaceVariant
-            else -> MaterialTheme.colorScheme.surface
-        },
+        targetValue = if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
         animationSpec = tween(durationMillis = 220),
         label = "subscription_container"
     )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
+        animationSpec = tween(durationMillis = 220),
+        label = "subscription_content"
+    )
+    val supportingColor = if (selected) {
+        scheme.onPrimaryContainer.copy(alpha = 0.75f)
+    } else {
+        scheme.onSurfaceVariant
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(animationSpec = tween(durationMillis = 220))
             .clickable(enabled = !isBusy, onClick = onApply),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RadioButton(selected = selected, onClick = onApply, enabled = !isBusy)
+                RadioButton(selected = selected, onClick = null, enabled = !isBusy)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -234,15 +255,15 @@ private fun SubscriptionCard(
                 ) {
                     Text(
                         text = subscription.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = contentColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = subscription.url,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = supportingColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -250,12 +271,12 @@ private fun SubscriptionCard(
                     Text(
                         text = "${formatRelativeTime(subscription.updatedAt)}  ·  ${formatAbsoluteTime(subscription.updatedAt)}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = supportingColor
                     )
                     Text(
                         text = "配置名：${subscription.configName}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = supportingColor
                     )
                 }
 
@@ -341,13 +362,21 @@ private fun AddSubscriptionDialog(
                     enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(180)),
                     exit = fadeOut(animationSpec = tween(180)) + shrinkVertically(animationSpec = tween(180))
                 ) {
+                    val stageContainer = when (importState.stage) {
+                        SubscriptionImportStage.Success -> MaterialTheme.colorScheme.primaryContainer
+                        SubscriptionImportStage.Error -> MaterialTheme.colorScheme.errorContainer
+                        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                    }
+                    val stageContent = when (importState.stage) {
+                        SubscriptionImportStage.Success -> MaterialTheme.colorScheme.onPrimaryContainer
+                        SubscriptionImportStage.Error -> MaterialTheme.colorScheme.onErrorContainer
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
                     Card(
+                        shape = MaterialTheme.shapes.medium,
                         colors = CardDefaults.cardColors(
-                            containerColor = when (importState.stage) {
-                                SubscriptionImportStage.Success -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f)
-                                SubscriptionImportStage.Error -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
-                                else -> MaterialTheme.colorScheme.surfaceVariant
-                            }
+                            containerColor = stageContainer,
+                            contentColor = stageContent
                         )
                     ) {
                         Column(
@@ -359,13 +388,13 @@ private fun AddSubscriptionDialog(
                             Text(
                                 text = importState.title,
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
+                                color = stageContent
                             )
                             importState.detail?.takeIf { it.isNotBlank() }?.let { detail ->
                                 Text(
                                     text = detail,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = stageContent.copy(alpha = 0.85f)
                                 )
                             }
                             when {
@@ -383,7 +412,7 @@ private fun AddSubscriptionDialog(
                                 Text(
                                     text = "配置即将出现在列表中",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = stageContent.copy(alpha = 0.85f)
                                 )
                             }
                         }

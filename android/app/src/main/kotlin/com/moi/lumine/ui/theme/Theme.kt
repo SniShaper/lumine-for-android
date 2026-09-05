@@ -41,9 +41,12 @@ private val LightColorScheme = lightColorScheme(
     surfaceContainer = Color(0xFFF2F3FA),
     surfaceContainerHigh = Color(0xFFECEEF4),
     surfaceContainerHighest = Color(0xFFE7E8EF),
+    surfaceDim = LightSurfaceDim,
+    surfaceBright = LightSurfaceBright,
     inverseSurface = Color(0xFF303034),
     inverseOnSurface = Color(0xFFF2F0F4),
-    inversePrimary = Color(0xFFAEC6FF)
+    inversePrimary = Color(0xFFAEC6FF),
+    scrim = Color(0xFF000000)
 )
 
 private val DarkColorScheme = darkColorScheme(
@@ -76,9 +79,12 @@ private val DarkColorScheme = darkColorScheme(
     surfaceContainer = Color(0xFF1F1F24),
     surfaceContainerHigh = Color(0xFF292A2F),
     surfaceContainerHighest = Color(0xFF34343A),
+    surfaceDim = DarkSurfaceDim,
+    surfaceBright = DarkSurfaceBright,
     inverseSurface = Color(0xFFE3E1E9),
     inverseOnSurface = Color(0xFF303034),
-    inversePrimary = Color(0xFF005AC1)
+    inversePrimary = Color(0xFF005AC1),
+    scrim = Color(0xFF000000)
 )
 
 @Composable
@@ -97,6 +103,8 @@ fun LumineTheme(
     }
     MaterialTheme(
         colorScheme = colorScheme,
+        typography = LumineTypography,
+        shapes = LumineShapes,
         content = content
     )
 }

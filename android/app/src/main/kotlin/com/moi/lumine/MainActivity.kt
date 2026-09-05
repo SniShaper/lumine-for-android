@@ -12,6 +12,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -149,7 +150,12 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
         }
     }
 
-    Scaffold { innerPadding ->
+    // 顶层容器不再吞掉系统栏 inset：各子屏 Scaffold 与 Home 各自处理，
+    // 避免嵌套 Scaffold 造成系统栏双重 padding。
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+    ) { innerPadding ->
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
@@ -179,6 +185,7 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
             composable(Screen.KeepAlive.route) {
                 com.moi.lumine.keepalive.KeepAliveGuideScreen(navController)
             }
+            composable(Screen.About.route) { AboutScreen(navController) }
         }
     }
 }

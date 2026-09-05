@@ -23,7 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoMode
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
@@ -37,17 +37,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.moi.lumine.ui.theme.GreenConnect
 
 data class PermissionItem(
     val title: String,
@@ -113,19 +109,15 @@ fun KeepAliveGuideScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("保活设置", fontWeight = FontWeight.Bold) },
+                title = { Text("保活设置") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
-                            imageVector = Icons.Filled.AutoMode,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                }
             )
         }
     ) { innerPadding ->
@@ -134,15 +126,18 @@ fun KeepAliveGuideScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(horizontal = 16.dp)
         ) {
             // Warning card
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
                 ),
-                shape = MaterialTheme.shapes.large
+                shape = MaterialTheme.shapes.extraLarge
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -152,14 +147,13 @@ fun KeepAliveGuideScreen(
                         imageVector = Icons.Filled.Warning,
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.error
+                        tint = MaterialTheme.colorScheme.onErrorContainer
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             text = "为什么需要这些设置？",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -167,7 +161,7 @@ fun KeepAliveGuideScreen(
                             text = "ColorOS、MIUI等国产系统会在用户划掉应用时强制杀死进程，导致代理中断。\n\n" +
                                     "开启以下权限后，应用才能在后台持续运行，保持代理连接和通知显示。",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f)
                         )
                     }
                 }
@@ -195,15 +189,14 @@ private fun PermissionCardWithStep(
     stepNumber: Int,
     item: PermissionItem
 ) {
+    val scheme = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = scheme.surfaceContainerLow,
+            contentColor = scheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp
-        ),
-        shape = MaterialTheme.shapes.large
+        shape = MaterialTheme.shapes.extraLarge
     ) {
         Row(
             modifier = Modifier
@@ -217,8 +210,8 @@ private fun PermissionCardWithStep(
                     .size(32.dp)
                     .clip(CircleShape)
                     .background(
-                        if (item.isGranted) GreenConnect
-                        else MaterialTheme.colorScheme.primaryContainer
+                        if (item.isGranted) scheme.primary
+                        else scheme.secondaryContainer
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -227,15 +220,13 @@ private fun PermissionCardWithStep(
                         imageVector = Icons.Filled.Check,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
-                        tint = Color.White
+                        tint = scheme.onPrimary
                     )
                 } else {
                     Text(
                         text = stepNumber.toString(),
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (item.isGranted) Color.White
-                        else MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
+                        color = scheme.onSecondaryContainer
                     )
                 }
             }
@@ -246,13 +237,13 @@ private fun PermissionCardWithStep(
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    color = scheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = item.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = scheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
@@ -271,7 +262,7 @@ private fun PermissionCardWithStep(
                 Icon(
                     imageVector = Icons.Filled.CheckCircle,
                     contentDescription = "已设置",
-                    tint = GreenConnect,
+                    tint = scheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             }

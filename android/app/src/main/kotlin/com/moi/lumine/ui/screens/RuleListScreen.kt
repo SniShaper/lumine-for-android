@@ -2,27 +2,35 @@ package com.moi.lumine.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -30,11 +38,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.moi.lumine.ui.ConfigViewModel
 import com.moi.lumine.ui.Screen
+import com.moi.lumine.ui.components.RadioOptionRow
+import com.moi.lumine.ui.components.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,23 +102,28 @@ fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
                 onValueChange = { searchText = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 placeholder = { Text("搜索域名或 IP 规则...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                )
+                shape = MaterialTheme.shapes.large
             )
 
             LazyColumn(modifier = Modifier.weight(1f)) {
+                if (domainRules.isEmpty() && ipRules.isEmpty()) {
+                    item {
+                        Text(
+                            text = "没有匹配的规则",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
                 item {
-                    Text(
-                        "域名规则 (${domainRules.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.primary
+                    SectionHeader(
+                        text = "域名规则 (${domainRules.size})",
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp)
                     )
                 }
                 items(items = domainRules, key = { it }) { key ->
@@ -118,11 +134,9 @@ fun RuleListScreen(navController: NavController, viewModel: ConfigViewModel) {
                 }
 
                 item {
-                    Text(
-                        "IP 规则 (${ipRules.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.primary
+                    SectionHeader(
+                        text = "IP 规则 (${ipRules.size})",
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
                     )
                 }
                 items(items = ipRules, key = { it }) { key ->
@@ -160,16 +174,17 @@ private fun CreateRuleDialog(
         title = { Text("新建规则") },
         text = {
             Column {
-                Text("规则类型", style = MaterialTheme.typography.labelLarge)
-                RuleTypeOption(
+                RadioOptionRow(
                     label = "域名规则",
                     selected = selectedType == "domain",
-                    onClick = { selectedType = "domain" }
+                    onClick = { selectedType = "domain" },
+                    description = "按域名匹配，例如 *.bing.com"
                 )
-                RuleTypeOption(
+                RadioOptionRow(
                     label = "IP 规则",
                     selected = selectedType == "ip",
-                    onClick = { selectedType = "ip" }
+                    onClick = { selectedType = "ip" },
+                    description = "按 IP/CIDR 匹配，例如 1.2.3.0/24"
                 )
                 TextField(
                     value = ruleKey,
@@ -200,28 +215,58 @@ private fun CreateRuleDialog(
 }
 
 @Composable
-private fun RuleTypeOption(label: String, selected: Boolean, onClick: () -> Unit) {
-    androidx.compose.foundation.layout.Row(
+fun RuleItem(key: String, type: String, onClick: () -> Unit) {
+    val isDomain = type == "domain"
+    ListItem(
+        headlineContent = {
+            Text(
+                text = key,
+                maxLines = 1,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        supportingContent = {
+            Text(
+                text = if (isDomain) "域名规则" else "IP/CIDR",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        leadingContent = {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isDomain) Icons.Default.Language else Icons.Default.Dns,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+        },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Text(label, modifier = Modifier.padding(start = 8.dp))
-    }
-}
-
-@Composable
-fun RuleItem(key: String, type: String, onClick: () -> Unit) {
-    androidx.compose.material3.ListItem(
-        headlineContent = { Text(key, maxLines = 1) },
-        supportingContent = { Text(if (type == "domain") "Domain Pattern" else "IP CIDR") },
-        modifier = Modifier.clickable { onClick() }
+            .clickable { onClick() }
     )
     HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        thickness = 0.5.dp,
+        modifier = Modifier.padding(start = 72.dp, end = 16.dp),
         color = MaterialTheme.colorScheme.outlineVariant
     )
 }

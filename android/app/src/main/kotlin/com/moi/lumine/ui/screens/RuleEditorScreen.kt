@@ -109,6 +109,7 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
     }
     var oob by remember(ruleKey, initialPolicy) { mutableStateOf(initialPolicy.oob ?: false) }
     var waitForAck by remember(ruleKey, initialPolicy) { mutableStateOf(initialPolicy.waitForAck ?: false) }
+    var editableRuleKey by remember(ruleKey) { mutableStateOf(ruleKey) }
 
     Scaffold(
         topBar = {
@@ -128,6 +129,8 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                 },
                 actions = {
                     IconButton(onClick = {
+                        val newKey = editableRuleKey.trim()
+                        if (newKey.isEmpty()) return@IconButton
                         val updatedPolicy = initialPolicy.copy(
                             mode = mode,
                             host = sanitizeHost(host).ifEmpty { null },
@@ -145,9 +148,19 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                             waitForAck = waitForAck
                         )
                         val updatedConfig = if (type == "domain") {
-                            config.copy(domainPolicies = config.domainPolicies + (ruleKey to updatedPolicy))
+                            val newPolicies = if (newKey != ruleKey) {
+                                config.domainPolicies - ruleKey + (newKey to updatedPolicy)
+                            } else {
+                                config.domainPolicies + (ruleKey to updatedPolicy)
+                            }
+                            config.copy(domainPolicies = newPolicies)
                         } else {
-                            config.copy(ipPolicies = config.ipPolicies + (ruleKey to updatedPolicy))
+                            val newPolicies = if (newKey != ruleKey) {
+                                config.ipPolicies - ruleKey + (newKey to updatedPolicy)
+                            } else {
+                                config.ipPolicies + (ruleKey to updatedPolicy)
+                            }
+                            config.copy(ipPolicies = newPolicies)
                         }
                         viewModel.updateConfig(updatedConfig)
                         viewModel.saveConfig()
@@ -178,16 +191,17 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "规则路径",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = ruleKey,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
+                        OutlinedTextField(
+                            value = editableRuleKey,
+                            onValueChange = { editableRuleKey = it },
+                            label = { Text("规则路径") },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = {
+                                Text(
+                                    if (type == "domain") "例如 *.bing.com" else "例如 1.2.3.0/24"
+                                )
+                            },
+                            singleLine = true
                         )
                     }
                 }

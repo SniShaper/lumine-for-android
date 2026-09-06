@@ -4,6 +4,10 @@ import android.app.Application
 import android.util.Log
 import com.moi.lumine.keepalive.KeepAlive
 import com.moi.lumine.network.NetworkMonitor
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +20,7 @@ class LumineApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        installCrashLogHandler()
 
         // 开启过代理才保活：调度闹钟/JobScheduler/WorkManager
         if (KeepAlive.shouldRun(this)) {
@@ -26,6 +31,34 @@ class LumineApp : Application() {
         NetworkMonitor.start(this)
 
         startWatchdog()
+    }
+
+    // 未捕获 Java 异常落盘到 logs/crash_*.txt，随会话日志目录一并导出
+    private fun installCrashLogHandler() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching {
+                val dir = File(filesDir, "logs").apply { mkdirs() }
+                val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+                val crashFile = File(dir, "crash_$stamp.txt")
+                val recent = VpnRuntimeState.logSnapshot.value.entries.takeLast(150)
+                crashFile.writeText(
+                    buildString {
+                        appendLine("Crash time: " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
+                        appendLine("Thread: ${thread.name}")
+                        appendLine("Phase: ${VpnRuntimeState.status.value.phase}")
+                        appendLine("Active: ${VpnRuntimeState.isVpnActive.value}")
+                        appendLine()
+                        appendLine("Recent log lines: ${recent.size}")
+                        recent.forEach { appendLine(it.raw) }
+                        appendLine()
+                        appendLine("Stack trace:")
+                        appendLine(Log.getStackTraceString(throwable))
+                    }
+                )
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
     }
 
     // 进程存活但服务已死 → 拉起（每 10 秒检查，仅代理开启时）

@@ -17,11 +17,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.Executors
 import mobile.Mobile // This will be available after gomobile bind
 
 class LumineVpnService : VpnService() {
@@ -29,7 +31,10 @@ class LumineVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var coreTunFd: Int? = null
     private var configName: String = "config" // Default config name
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val transitionExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "lumine-lifecycle").apply { isDaemon = false }
+    }
+    private val serviceScope = CoroutineScope(SupervisorJob() + transitionExecutor.asCoroutineDispatcher())
     private val repository by lazy { ConfigRepository(applicationContext) }
     private val transitionLock = Any()
     private var logPumpJob: Job? = null
@@ -294,6 +299,7 @@ class LumineVpnService : VpnService() {
         stopLogPump()
         performCoreShutdownIfNeeded()
         serviceScope.cancel()
+        transitionExecutor.shutdown()
         pendingStopRequested = false
         VpnRuntimeState.setActive(false)
         runCatching { vpnInterface?.close() }

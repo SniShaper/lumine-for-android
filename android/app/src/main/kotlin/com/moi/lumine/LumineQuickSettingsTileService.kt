@@ -5,6 +5,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import androidx.core.content.ContextCompat
@@ -15,6 +16,7 @@ class LumineQuickSettingsTileService : TileService() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastRenderedState = -1
     private var tileListening = false
+    private var lastActionAt = 0L
 
     private val updater = object : Runnable {
         override fun run() {
@@ -45,6 +47,12 @@ class LumineQuickSettingsTileService : TileService() {
     }
 
     override fun onClick() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastActionAt < MIN_ACTION_INTERVAL_MS) {
+            return
+        }
+        lastActionAt = now
+
         val status = VpnRuntimeState.status.value
         val running = VpnRuntimeState.isVpnActive.value
         val busy = status.phase == "starting" ||
@@ -121,5 +129,6 @@ class LumineQuickSettingsTileService : TileService() {
 
     companion object {
         private const val REFRESH_INTERVAL_MS = 800L
+        private const val MIN_ACTION_INTERVAL_MS = 500L
     }
 }

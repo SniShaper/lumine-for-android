@@ -37,8 +37,10 @@ class LumineApp : Application() {
 
     // 未捕获 Java 异常落盘到 logs/crash_*.txt，随会话日志目录一并导出
     private fun enableFdsanWarnIfFlagged() {
-        if (File(filesDir, "fdsan_warn").exists()) {
-            Log.w("LumineApp", "fdsan_warn flag present, switching fdsan to warn-always")
+        val flag = File(filesDir, "fdsan_warn").exists()
+        val debuggable = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (flag || debuggable) {
+            Log.w("LumineApp", "fdsan warn-always enabled (flag=$flag debuggable=$debuggable)")
             runCatching { Mobile.setFdsanWarnOnly(true) }
                 .onFailure { Log.e("LumineApp", "setFdsanWarnOnly failed: ${it.message}") }
         }

@@ -104,13 +104,24 @@ func StartLumine(fd int, configName string) string {
 
 	engine.SetCustomProxy(&LumineProxy{})
 
+	// The engine's fdbased device takes the raw fd and closes it with a raw
+	// close(2), which bypasses Android's fdsan ownership bookkeeping. Passing
+	// the VpnService fd directly would leave a stale ownership tag that trips
+	// fdsan later when the fd number is reused. Duplicate the fd first so the
+	// engine owns an untagged copy; the original is closed by the Java side.
+	tunFd, err := dupFd(fd)
+	if err != nil {
+		return fmt.Sprintf("dup tun fd error: %v", err)
+	}
+
 	engine.Insert(&engine.Key{
-		Device:   fmt.Sprintf("fd://%d", fd),
+		Device:   fmt.Sprintf("fd://%d", tunFd),
 		LogLevel: "info",
 		MTU:      1500,
 	})
 	if err = engine.StartErr(); err != nil {
 		engine.ClearCustomProxy()
+		_ = closeFd(tunFd)
 		return fmt.Sprintf("engine start error: %v", err)
 	}
 	isRunning = true

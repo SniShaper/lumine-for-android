@@ -1,20 +1,38 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
-title: ''
-labels: ''
-assignees: ''
+about: 为这个项目提出功能建议
+title: "[Feature]"
+labels: enhancement
+assignees: dongzheyu, SniShaper
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## 功能描述
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+请详细描述你希望增加或改进的功能：
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+<!-- 在此填写 -->
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+## 使用场景
+
+说明这个功能在什么情况下会用到，以及它能解决什么问题：
+
+<!-- 在此填写 -->
+
+## 期望效果
+
+描述你理想中的实现效果或交互方式：
+
+<!-- 在此填写 -->
+
+## 补充信息
+
+- 是否有类似产品的参考？
+- 是否了解 Android 平台的限制（例如 VPN 同一时刻只能被一个应用占用、后台限制等）？
+- 其他相关说明或截图（可选）
+
+（请直接拖拽上传图片或附件）
+
+---
+
+感谢您的建议！

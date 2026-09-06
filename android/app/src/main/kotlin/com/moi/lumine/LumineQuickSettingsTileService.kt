@@ -52,6 +52,9 @@ class LumineQuickSettingsTileService : TileService() {
             return
         }
         lastActionAt = now
+        if (ToggleCooldown.acquire() != ToggleCooldown.Result.ALLOWED) {
+            return
+        }
 
         val status = VpnRuntimeState.status.value
         val running = VpnRuntimeState.isVpnActive.value

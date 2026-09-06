@@ -76,6 +76,34 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
             toggleLocked = false
         }
     }
+
+    LaunchedEffect(Unit) {
+        var showing = -1
+        while (true) {
+            kotlinx.coroutines.delay(200)
+            val remain = ToggleCooldown.remainingMs()
+            if (remain > 0L) {
+                val seconds = ((remain + 999) / 1000).toInt().coerceAtLeast(1)
+                if (seconds != showing) {
+                    showing = seconds
+                    val phase = VpnRuntimeState.status.value.phase
+                    VpnRuntimeState.setStatus(phase, "点击频率过高，请 $seconds 秒后再试")
+                }
+            } else if (showing >= 0) {
+                showing = -1
+                val phase = VpnRuntimeState.status.value.phase
+                val restored = when (phase) {
+                    "running" -> "代理运行中"
+                    "idle" -> "点此启动服务"
+                    "error" -> "启动失败，点击重试"
+                    else -> null
+                }
+                if (restored != null) {
+                    VpnRuntimeState.setStatus(phase, restored)
+                }
+            }
+        }
+    }
     
     val vpnRequestLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -150,6 +178,17 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
         }
     }
 
+    fun handleToggle() {
+        if (ToggleCooldown.acquire() != ToggleCooldown.Result.ALLOWED) {
+            return
+        }
+        if (VpnRuntimeState.isVpnActive.value) {
+            stopVpn()
+        } else {
+            startVpn()
+        }
+    }
+
     // 顶层容器不再吞掉系统栏 inset：各子屏 Scaffold 与 Home 各自处理，
     // 避免嵌套 Scaffold 造成系统栏双重 padding。
     Scaffold(
@@ -165,8 +204,7 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
                 HomeScreen(
                     navController = navController,
                     viewModel = viewModel,
-                    onStart = { startVpn() },
-                    onStop = { stopVpn() }
+                    onToggle = { handleToggle() }
                 )
             }
             composable(Screen.Subscriptions.route) { SubscriptionScreen(navController, viewModel) }

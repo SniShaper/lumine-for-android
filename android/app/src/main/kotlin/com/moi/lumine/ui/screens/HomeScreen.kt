@@ -71,8 +71,7 @@ import org.json.JSONObject
 fun HomeScreen(
     navController: NavController,
     viewModel: ConfigViewModel,
-    onStart: () -> Unit,
-    onStop: () -> Unit
+    onToggle: () -> Unit
 ) {
     val isConnected by viewModel.isVpnActive.collectAsState()
     val selectedConfig by viewModel.selectedConfigDisplayName.collectAsState()
@@ -119,10 +118,7 @@ fun HomeScreen(
                 statusMessage = vpnStatus.message,
                 isBusy = vpnStatus.phase == "authorizing" || vpnStatus.phase == "starting" || vpnStatus.phase == "stopping"
             ) {
-                if (vpnStatus.phase == "authorizing" || vpnStatus.phase == "starting" || vpnStatus.phase == "stopping") {
-                    return@StatusCard
-                }
-                if (isConnected) onStop() else onStart()
+                onToggle()
             }
         }
 
@@ -302,7 +298,7 @@ fun StatusCard(isConnected: Boolean, statusMessage: String, isBusy: Boolean, onC
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !isBusy, onClick = onClick),
+            .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
             containerColor = containerColor,

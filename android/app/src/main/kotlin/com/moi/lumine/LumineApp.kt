@@ -14,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import mobile.Mobile
 
 class LumineApp : Application() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -21,6 +22,7 @@ class LumineApp : Application() {
     override fun onCreate() {
         super.onCreate()
         installCrashLogHandler()
+        enableFdsanWarnIfFlagged()
 
         // 开启过代理才保活：调度闹钟/JobScheduler/WorkManager
         if (KeepAlive.shouldRun(this)) {
@@ -34,6 +36,14 @@ class LumineApp : Application() {
     }
 
     // 未捕获 Java 异常落盘到 logs/crash_*.txt，随会话日志目录一并导出
+    private fun enableFdsanWarnIfFlagged() {
+        if (File(filesDir, "fdsan_warn").exists()) {
+            Log.w("LumineApp", "fdsan_warn flag present, switching fdsan to warn-always")
+            runCatching { Mobile.setFdsanWarnOnly(true) }
+                .onFailure { Log.e("LumineApp", "setFdsanWarnOnly failed: ${it.message}") }
+        }
+    }
+
     private fun installCrashLogHandler() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -42,12 +52,14 @@ class LumineApp : Application() {
                 val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                 val crashFile = File(dir, "crash_$stamp.txt")
                 val recent = VpnRuntimeState.logSnapshot.value.entries.takeLast(150)
+                val fdSnap = FdDiag.dump(filesDir, "java_crash", thread.name)
                 crashFile.writeText(
                     buildString {
                         appendLine("Crash time: " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
                         appendLine("Thread: ${thread.name}")
                         appendLine("Phase: ${VpnRuntimeState.status.value.phase}")
                         appendLine("Active: ${VpnRuntimeState.isVpnActive.value}")
+                        fdSnap?.let { appendLine("Fd snapshot: ${it.name}") }
                         appendLine()
                         appendLine("Recent log lines: ${recent.size}")
                         recent.forEach { appendLine(it.raw) }

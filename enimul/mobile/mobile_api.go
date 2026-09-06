@@ -113,6 +113,7 @@ func StartLumine(fd int, configName string) string {
 	if err != nil {
 		return fmt.Sprintf("dup tun fd error: %v", err)
 	}
+	mainLogger.Info(fmt.Sprintf("tun fd provenance: original=%d engine_dup=%d (untagged, closed by engine on stop)", fd, tunFd))
 
 	engine.Insert(&engine.Key{
 		Device:   fmt.Sprintf("fd://%d", tunFd),

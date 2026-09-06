@@ -54,6 +54,7 @@ class LumineVpnService : VpnService() {
         if (repository.recordCrashRestart()) {
             suppressAutoRestart = true
             Log.w("LumineVpn", "Too many rapid restarts, suppressing auto-recovery")
+            FdDiag.dump(filesDir, "restart", "auto-recovery suppressed")
         }
     }
 
@@ -201,6 +202,7 @@ class LumineVpnService : VpnService() {
                         } else {
                             coreStarted = true
                             Log.i("LumineVpn", "Lumine started successfully")
+                            FdDiag.dump(filesDir, "start", "original_fd=$fd engine=dup-close")
                             VpnRuntimeState.setActive(true)
                             VpnRuntimeState.setStatus("running", "代理运行中")
                             updateNotification("代理运行中")
@@ -268,6 +270,7 @@ class LumineVpnService : VpnService() {
                 stopWatchdog()
                 stopLogPump()
                 performCoreShutdownIfNeeded()
+                FdDiag.dump(filesDir, "stop", "engine stopped")
                 pendingStopRequested = false
                 VpnRuntimeState.setActive(false)
 

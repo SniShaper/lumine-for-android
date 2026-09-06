@@ -22,6 +22,14 @@ func sendRecords(conn net.Conn, clientHello []byte,
 	offset, length, records, segments int, minorVersion Byte,
 	oob, oobex, waitForAckEnabled bool,
 	interval time.Duration) error {
+	if len(clientHello) < 5 {
+		_, err := conn.Write(clientHello)
+		return err
+	}
+	if oobex && len(clientHello) < 35 {
+		_, err := conn.Write(clientHello)
+		return err
+	}
 	if !minorVersion.IsUnset() {
 		clientHello[2] = minorVersion.Byte()
 	}
@@ -154,7 +162,7 @@ func sendRecords(conn net.Conn, clientHello []byte,
 
 func splitAndAppend(data, header []byte, n int, result *[][]byte) {
 	if n <= 0 {
-		panic("impossible")
+		return
 	}
 	addHeader := header != nil
 	if n == 1 || len(data) < n {

@@ -45,16 +45,23 @@ class LumineVpnService : VpnService() {
     @Volatile private var coreOwnsTunFd = false
     @Volatile private var pendingStopRequested = false
     @Volatile private var coreStopIssued = false
+    @Volatile private var suppressAutoRestart = false
     @Volatile private var lastWatchdogRecoveryAt = 0L
 
     override fun onCreate() {
         super.onCreate()
         isServiceRunning = true
+        if (repository.recordCrashRestart()) {
+            suppressAutoRestart = true
+            Log.w("LumineVpn", "Too many rapid restarts, suppressing auto-recovery")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == ACTION_STOP) {
+            repository.resetCrashCounter()
+            suppressAutoRestart = false
             repository.setVpnShouldRun(false)
             VpnRuntimeState.setStatus("stopping", "正在停止代理")
             stopVpn()
@@ -64,6 +71,20 @@ class LumineVpnService : VpnService() {
         val requestedConfig = intent?.getStringExtra(EXTRA_CONFIG_NAME)?.takeIf { it.isNotBlank() }
         val shouldRecover = requestedConfig == null && repository.shouldVpnBeRunning()
         val targetConfig = requestedConfig ?: if (shouldRecover) repository.getLastRunningConfigName() else null
+
+        if (requestedConfig != null) {
+            repository.resetCrashCounter()
+            suppressAutoRestart = false
+        }
+
+        if (shouldRecover && suppressAutoRestart) {
+            Log.w("LumineVpn", "Suppressing auto-recovery after repeated crashes")
+            repository.setVpnShouldRun(false)
+            VpnRuntimeState.setActive(false)
+            VpnRuntimeState.setStatus("idle", "多次异常退出，已停止自动恢复代理")
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // 恢复路径：VPN 授权丢失（划掉重启/系统重置）时，拉起主界面重新授权，
         // 不要在这里 startVpn()，否则 establish() 抛 SecurityException 会清掉保活标志
@@ -140,10 +161,8 @@ class LumineVpnService : VpnService() {
             vpnInterface = builder.establish()
 
             if (vpnInterface != null) {
-                val tun = vpnInterface!!
-                val fd = tun.detachFd()
-                vpnInterface = null
-                coreTunFd = fd
+                val pfd = vpnInterface!!
+                val fd = pfd.fd
                 Log.i("LumineVpn", "Established TUN FD: $fd")
                 VpnRuntimeState.setStatus("starting", "VPN 已建立，正在启动核心")
 
@@ -168,9 +187,10 @@ class LumineVpnService : VpnService() {
                             coreOwnsTunFd = true
                         }
                         val error = Mobile.startLumine(fd.toLong(), configName)
+                        // Go 引擎在内部 dup 了一份无 fdsan 所有权的 fd；此处由 Java 关闭原始 fd，
+                        // 确保 Android 侧的所有权表项被正确清除（避免 fd 号复用触发 fdsan）。
+                        closePendingTunFd()
                         if (error.isNotEmpty()) {
-                            // Go 引擎失败时可能已自行关闭 fd，此处绝不 close，避免 fdsan 崩溃；泄漏由进程回收
-                            coreTunFd = null
                             coreOwnsTunFd = false
                             Log.e("LumineVpn", "Go core failed: $error")
                             updateNotification("启动失败: $error")
@@ -191,6 +211,7 @@ class LumineVpnService : VpnService() {
                             }
                         }
                     } catch (e: Exception) {
+                        closePendingTunFd()
                         Log.e("LumineVpn", "Failed to initialize Go core", e)
                         VpnRuntimeState.setActive(false)
                         VpnRuntimeState.setStatus("error", "核心初始化失败")
@@ -432,11 +453,12 @@ class LumineVpnService : VpnService() {
     }
 
     private fun closePendingTunFd() {
-        val fd = coreTunFd ?: return
         coreTunFd = null
-        // 仅在 Go 引擎未接管时调用（startLumine 之前）。接管后所有权归 Go 引擎，
-        // 绝不在此 close，否则 fdsan 检测到双重关闭会 SIGABRT 崩溃。
-        runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
+        // 引擎在 Go 侧 dup 接管了它自己的 fd；这里的 ParcelFileDescriptor 始终由 Java
+        // 通过正式 close() 释放，确保 Android fdsan 所有权表项被正确清除。
+        val pfd = vpnInterface
+        vpnInterface = null
+        runCatching { pfd?.close() }
     }
 
     private suspend fun recoverVpnFromWatchdog() {

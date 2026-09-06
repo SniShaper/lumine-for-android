@@ -2,6 +2,7 @@ package com.moi.lumine.repository
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import androidx.core.content.FileProvider
 import com.moi.lumine.VpnStatus
 import com.moi.lumine.model.LumineConfig
@@ -197,6 +198,26 @@ class ConfigRepository(private val context: Context) {
 
     fun setAppRoutingPackages(packages: Set<String>) {
         prefs.edit().putStringSet(KEY_APP_ROUTING_PACKAGES, packages).apply()
+    }
+
+    fun recordCrashRestart(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val windowStart = prefs.getLong(KEY_CRASH_WINDOW_START, 0L)
+        val counter = if (windowStart > 0L && now - windowStart <= CRASH_WINDOW_MS) {
+            prefs.getInt(KEY_CRASH_COUNTER, 0)
+        } else {
+            0
+        }
+        val next = counter + 1
+        prefs.edit()
+            .putLong(KEY_CRASH_WINDOW_START, now)
+            .putInt(KEY_CRASH_COUNTER, next)
+            .apply()
+        return next >= MAX_CRASH_RESTARTS
+    }
+
+    fun resetCrashCounter() {
+        prefs.edit().remove(KEY_CRASH_COUNTER).remove(KEY_CRASH_WINDOW_START).apply()
     }
 
     suspend fun loadSubscriptions(): List<SubscriptionProfile> = withContext(Dispatchers.IO) {
@@ -406,6 +427,10 @@ class ConfigRepository(private val context: Context) {
         private const val KEY_LAST_RUNNING_CONFIG = "last_running_config_name"
         private const val KEY_APP_ROUTING_MODE = "app_routing_mode"
         private const val KEY_APP_ROUTING_PACKAGES = "app_routing_packages"
+        private const val KEY_CRASH_COUNTER = "crash_restart_counter"
+        private const val KEY_CRASH_WINDOW_START = "crash_restart_window_start"
+        private const val CRASH_WINDOW_MS = 60_000L
+        private const val MAX_CRASH_RESTARTS = 3
     }
 }
 

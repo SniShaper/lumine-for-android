@@ -1,11 +1,11 @@
 buildscript {
     ext.kotlin_version = "2.4.10"
     repositories {
-        // 1. CERNET 联合镜像（教育网/公网均可，Central/Gradle 发行版等）
-        maven { url 'https://mirrors.cernet.edu.cn/maven/' }
-
-        // 2. 腾讯云镜像（聚合仓库，包含 Google、Central 等）
+        // 1. 腾讯云镜像（聚合仓库，包含 Google、Central 等）
         maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+
+        // 2. CERNET 联合镜像（教育网/公网均可，Central/Gradle 发行版等）
+        maven { url 'https://mirrors.cernet.edu.cn/maven/' }
 
         // 3. 官方仓库（镜像全部失败时最后尝试）
         google()
@@ -21,8 +21,8 @@ buildscript {
 allprojects {
     repositories {
         // 同样的顺序：镜像优先，官方兜底
-        maven { url 'https://mirrors.cernet.edu.cn/maven/' }
         maven { url 'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/' }
+        maven { url 'https://mirrors.cernet.edu.cn/maven/' }
 
         google()
         mavenCentral()

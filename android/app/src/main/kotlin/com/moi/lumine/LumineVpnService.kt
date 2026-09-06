@@ -10,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import com.moi.lumine.keepalive.KeepAlive
+import com.moi.lumine.repository.AppRoutingMode
 import com.moi.lumine.repository.ConfigRepository
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -129,7 +130,7 @@ class LumineVpnService : VpnService() {
                 .addRoute("::", 0)            // Global IPv6 proxy
 
             // Keep the app's own sockets out of the VPN to avoid proxy self-loops.
-            builder.addDisallowedApplication(packageName)
+            applyAppRouting(builder)
 
             vpnInterface = builder.establish()
 
@@ -303,6 +304,30 @@ class LumineVpnService : VpnService() {
             VpnRuntimeState.setStatus("idle", "点此启动服务")
         }
         super.onDestroy()
+    }
+
+    private fun applyAppRouting(builder: Builder) {
+        val mode = repository.getAppRoutingMode()
+        val packages = repository.getAppRoutingPackages()
+            .filter { it.isNotBlank() && it != packageName }
+            .distinct()
+        when (mode) {
+            AppRoutingMode.WHITELIST -> {
+                if (packages.isEmpty()) {
+                    builder.addDisallowedApplication(packageName)
+                    return
+                }
+                packages.forEach { pkg ->
+                    runCatching { builder.addAllowedApplication(pkg) }
+                }
+            }
+            AppRoutingMode.BYPASS -> {
+                (packages + packageName).forEach { pkg ->
+                    runCatching { builder.addDisallowedApplication(pkg) }
+                }
+            }
+            AppRoutingMode.ALL -> builder.addDisallowedApplication(packageName)
+        }
     }
 
     private fun ensureConfigFile(name: String) {
@@ -522,8 +547,8 @@ class LumineVpnService : VpnService() {
     }
 
     companion object {
-        private const val ACTION_STOP = "STOP"
-        private const val EXTRA_CONFIG_NAME = "CONFIG_NAME"
+        const val ACTION_STOP = "STOP"
+        const val EXTRA_CONFIG_NAME = "CONFIG_NAME"
         const val EXTRA_REQUEST_VPN_PERMISSION = "REQUEST_VPN_PERMISSION"
         private const val NOTIFICATION_CHANNEL_ID = "lumine_vpn"
         private const val NOTIFICATION_ID = 1001

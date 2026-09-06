@@ -182,6 +182,23 @@ class ConfigRepository(private val context: Context) {
             ?: getSelectedConfigName()
     }
 
+    fun getAppRoutingMode(): AppRoutingMode {
+        val raw = prefs.getString(KEY_APP_ROUTING_MODE, AppRoutingMode.ALL.value) ?: AppRoutingMode.ALL.value
+        return AppRoutingMode.entries.firstOrNull { it.value == raw } ?: AppRoutingMode.ALL
+    }
+
+    fun setAppRoutingMode(mode: AppRoutingMode) {
+        prefs.edit().putString(KEY_APP_ROUTING_MODE, mode.value).apply()
+    }
+
+    fun getAppRoutingPackages(): Set<String> {
+        return prefs.getStringSet(KEY_APP_ROUTING_PACKAGES, emptySet()) ?: emptySet()
+    }
+
+    fun setAppRoutingPackages(packages: Set<String>) {
+        prefs.edit().putStringSet(KEY_APP_ROUTING_PACKAGES, packages).apply()
+    }
+
     suspend fun loadSubscriptions(): List<SubscriptionProfile> = withContext(Dispatchers.IO) {
         try {
             val raw = prefs.getString(KEY_SUBSCRIPTIONS, "[]") ?: "[]"
@@ -387,7 +404,15 @@ class ConfigRepository(private val context: Context) {
         private const val KEY_SUBSCRIPTIONS = "subscriptions_json"
         private const val KEY_VPN_SHOULD_RUN = "vpn_should_run"
         private const val KEY_LAST_RUNNING_CONFIG = "last_running_config_name"
+        private const val KEY_APP_ROUTING_MODE = "app_routing_mode"
+        private const val KEY_APP_ROUTING_PACKAGES = "app_routing_packages"
     }
+}
+
+enum class AppRoutingMode(val value: String) {
+    ALL("all"),
+    WHITELIST("whitelist"),
+    BYPASS("bypass")
 }
 
 data class ExportedLogFile(

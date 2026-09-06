@@ -184,6 +184,7 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
             composable(Screen.Logs.route) { LogScreen(navController, viewModel) }
             composable(Screen.Proxies.route) { ProxiesScreen(navController, viewModel) }
             composable(Screen.Routing.route) { RoutingScreen(navController, viewModel) }
+            composable(Screen.AppRouting.route) { AppRoutingScreen(navController, viewModel) }
             composable(Screen.Dns.route) { DnsScreen(navController, viewModel) }
             composable(Screen.Evolution.route) { EvolutionScreen(navController, viewModel) }
             composable(Screen.KeepAlive.route) {

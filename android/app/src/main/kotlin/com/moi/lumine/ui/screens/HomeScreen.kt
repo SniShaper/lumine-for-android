@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -155,6 +156,8 @@ fun HomeScreen(
                 MenuRow(Icons.Default.Tune, "分流规则") { navController.navigate(Screen.Rules.route) }
                 MenuDivider()
                 MenuRow(Icons.Default.Security, "自动分流") { navController.navigate(Screen.Routing.route) }
+                MenuDivider()
+                MenuRow(Icons.Default.PhoneAndroid, "分应用路由") { navController.navigate(Screen.AppRouting.route) }
                 MenuDivider()
                 MenuRow(Icons.Default.Dns, "DNS 设置") { navController.navigate(Screen.Dns.route) }
                 MenuDivider()

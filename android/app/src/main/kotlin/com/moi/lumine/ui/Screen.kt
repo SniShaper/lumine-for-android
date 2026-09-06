@@ -13,6 +13,7 @@ sealed class Screen(val route: String) {
     object About : Screen("about")
     object Proxies : Screen("proxies")
     object Routing : Screen("routing")
+    object AppRouting : Screen("app_routing")
     object Dns : Screen("dns")
     object Evolution : Screen("evolution")
 }

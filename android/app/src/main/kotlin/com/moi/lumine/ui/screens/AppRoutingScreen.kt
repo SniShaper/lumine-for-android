@@ -80,6 +80,7 @@ fun AppRoutingScreen(navController: NavController, viewModel: ConfigViewModel) {
     var mode by remember { mutableStateOf(repository.getAppRoutingMode()) }
     var checked by remember { mutableStateOf(repository.getAppRoutingPackages()) }
     var query by remember { mutableStateOf("") }
+    var manualInput by remember { mutableStateOf("") }
 
     val appList = remember(context) { loadLaunchableApps(context) }
     val keyword = query.trim()
@@ -92,6 +93,14 @@ fun AppRoutingScreen(navController: NavController, viewModel: ConfigViewModel) {
                     it.packageName.contains(keyword, ignoreCase = true)
             }
         }
+    }
+    val manualApps = remember(checked, appList, keyword) {
+        checked.asSequence()
+            .filter { pkg -> appList.none { it.packageName == pkg } }
+            .filter { keyword.isEmpty() || it.contains(keyword, ignoreCase = true) }
+            .map { RoutingAppInfo(label = it, packageName = it) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.packageName })
+            .toList()
     }
     val modeLabel = when (mode) {
         AppRoutingMode.WHITELIST -> "白名单：仅所选应用走代理"
@@ -108,6 +117,17 @@ fun AppRoutingScreen(navController: NavController, viewModel: ConfigViewModel) {
             repository.setAppRoutingPackages(nextChecked)
             checked = nextChecked
         }
+    }
+
+    fun addManualPackages() {
+        val pkgs = manualInput.split(Regex("[\\s,;，；]+"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        if (pkgs.isEmpty()) {
+            return
+        }
+        applyChange(nextChecked = checked + pkgs.toSet())
+        manualInput = ""
     }
 
     Scaffold(
@@ -200,6 +220,24 @@ fun AppRoutingScreen(navController: NavController, viewModel: ConfigViewModel) {
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = manualInput,
+                        onValueChange = { manualInput = it },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("手动添加包名") },
+                        placeholder = { Text("com.example.app，支持空格/逗号批量") },
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { addManualPackages() },
+                        enabled = manualInput.isNotBlank()
+                    ) {
+                        Text("添加")
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
 
                 if (mode == AppRoutingMode.WHITELIST && checked.isEmpty()) {
                     Text(
@@ -229,6 +267,25 @@ fun AppRoutingScreen(navController: NavController, viewModel: ConfigViewModel) {
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    if (manualApps.isNotEmpty()) {
+                        item(key = "manual_header") {
+                            Text(
+                                text = "手动添加",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        items(items = manualApps, key = { "manual:" + it.packageName }) { app ->
+                            RoutingAppRow(
+                                app = app,
+                                selected = app.packageName in checked,
+                                onClick = {
+                                    applyChange(nextChecked = checked - app.packageName)
+                                }
+                            )
+                        }
+                    }
                     items(items = filtered, key = { it.packageName }) { app ->
                         RoutingAppRow(
                             app = app,

@@ -347,7 +347,7 @@ private fun NodeDialog(
                     )
                 }
                 Text(
-                    text = "提示：IIJ DoQ 节点需在传输类型中选择 QUIC；Cloudflare Gateway 为 DoH。",
+                    text = "提示：IIJ DoQ 节点需在传输类型中选择 QUIC；Cloudflare Gateway 与 IIJ (DoH) 需选择 DoH (HTTPS)。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
@@ -363,6 +363,7 @@ private fun NodeDialog(
 
 private val DNS_PRESETS: List<Pair<String, String>> = listOf(
     "Cloudflare Gateway (DoH)" to "https://xwfpeb16ii.cloudflare-gateway.com/dns-query",
+    "IIJ (DoH)" to "https://public.dns.iij.jp/dns-query",
     "IIJ DoQ (QUIC, DoQ)" to "public.dns.iij.jp:853"
 )
 

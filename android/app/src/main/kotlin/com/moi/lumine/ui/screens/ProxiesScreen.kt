@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,12 @@ import androidx.navigation.NavController
 import com.moi.lumine.network.NetworkMonitor
 import com.moi.lumine.ui.ConfigViewModel
 import com.moi.lumine.ui.components.SectionHeader
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 private const val PREFS_NAME = "lumine_profiles"
@@ -71,6 +79,9 @@ fun ProxiesScreen(navController: NavController, viewModel: ConfigViewModel) {
     var showAdd by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Nat64Profile?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var testResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var testingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val scope = rememberCoroutineScope()
 
     fun save(list: List<Nat64Profile>) {
         profiles = list
@@ -147,6 +158,34 @@ fun ProxiesScreen(navController: NavController, viewModel: ConfigViewModel) {
                             color = MaterialTheme.colorScheme.onSurface)
                         Text("前缀：${p.prefix}", style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = {
+                                    testingIds = testingIds + p.id
+                                    scope.launch {
+                                        val rtt = nat64Rtt(p.prefix)
+                                        val label = if (rtt != null) "${rtt}ms" else "连接失败"
+                                        testResults = testResults + (p.id to label)
+                                        testingIds = testingIds - p.id
+                                    }
+                                },
+                                enabled = p.id !in testingIds,
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Text(
+                                    if (p.id in testingIds) "测试中..." else "测试连接",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                            testResults[p.id]?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall,
+                                    color = if (it == "连接失败") MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                     IconButton(onClick = { editing = p }, enabled = ipv6Ok) {
                         Icon(Icons.Default.Edit, contentDescription = "编辑", tint = MaterialTheme.colorScheme.primary)
@@ -328,4 +367,44 @@ private fun storeProfiles(context: Context, list: List<Nat64Profile>) {
     }
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         .putString(KEY_NAT64, JSONObject().put("items", arr).toString()).apply()
+}
+
+private fun mapNat64ForTest(ip: String, prefix: String): String {
+    val trimmed = prefix.trim()
+    if (trimmed.isEmpty()) return ip
+    val v4 = runCatching { InetAddress.getByName(ip) }.getOrNull()
+        ?.address?.takeIf { it.size == 4 } ?: return ip
+    val base = if (trimmed.contains("/")) {
+        runCatching { InetAddress.getByName(trimmed.substringBefore("/")) }.getOrNull()
+    } else {
+        runCatching { InetAddress.getByName(trimmed) }.getOrNull()
+    }
+    val b = base?.address
+    if (b == null || b.size != 16) return ip
+    val out = ByteArray(16)
+    System.arraycopy(b, 0, out, 0, 12)
+    System.arraycopy(v4, 0, out, 12, 4)
+    return InetAddress.getByAddress(out).hostAddress
+}
+
+private suspend fun nat64Rtt(prefix: String): Long? {
+    return try {
+        withContext(Dispatchers.IO) {
+            var mapped: String? = null
+            for (a in InetAddress.getAllByName("www.cloudflare.com")) {
+                val h = a.hostAddress ?: continue
+                if (h.contains(":")) continue
+                mapped = mapNat64ForTest(h, prefix)
+                break
+            }
+            mapped ?: return@withContext null
+            val start = System.nanoTime()
+            Socket().use { s ->
+                s.connect(InetSocketAddress(mapped, 443), 4000)
+                (System.nanoTime() - start) / 1_000_000
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
 }

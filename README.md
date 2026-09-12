@@ -10,6 +10,8 @@ The UI is natively built with **Kotlin + Jetpack Compose**, following **Material
 
 > Looking for the desktop version? See **[SniShaper](https://github.com/SnishaperTeam/SniShaper)** — a Windows / Linux proxy client with the same enimul-based routing ideas, plus a headless CLI variant.
 
+> Looking for the HarmonyOS version? See **[Lumine for HarmonyOS](https://github.com/SnishaperTeam/lumine-for-harmonyos)** — the HarmonyOS companion built with ArkTS + ArkUI and a portable C++17 core over NAPI (no WebView embedded), featuring VpnExtensionAbility (TUN) tunnels, a local SOCKS5 / HTTP listen mode, subscription management and rule editing.
+
 ---
 
 ## Features

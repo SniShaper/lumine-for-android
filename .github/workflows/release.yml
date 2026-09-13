@@ -85,6 +85,24 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
+      - name: Cache Gradle build-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-build-cache-${{ hashFiles('android/**/*.gradle', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-build-cache-
+
+      - name: Cache gomobile bind output
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/gomobile
+            ~/go/pkg/android_arm64
+          key: gomobile-${{ hashFiles('enimul/go.sum', 'tun2socks/go.sum') }}-v1
+          restore-keys: |
+            gomobile-
+
       - name: Prepare Go mobile toolchain
         shell: bash
         env:
@@ -96,16 +114,9 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@latest
           gomobile init
 
-      - name: Download Go dependencies
-        shell: bash
-        working-directory: enimul
-        env:
-          GOFLAGS: -mod=mod
-        run: go mod download
-
       - name: Build Android core AAR
-        shell: bash
         working-directory: enimul
+        shell: bash
         env:
           GOFLAGS: -mod=mod
         run: |
@@ -120,8 +131,10 @@ jobs:
       - name: Prepare signing keystore
         if: env.HAS_ANDROID_KEYSTORE != ''
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          echo "$HAS_ANDROID_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
 
       - name: Build release APKs
         shell: bash
@@ -133,7 +146,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon --parallel assembleRelease
 
       - name: Publish GitHub release
         shell: bash

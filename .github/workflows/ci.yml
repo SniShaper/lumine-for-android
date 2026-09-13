@@ -73,6 +73,24 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
+      - name: Cache Gradle build-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-build-cache-${{ hashFiles('android/**/*.gradle', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-build-cache-
+
+      - name: Cache gomobile bind output
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/gomobile
+            ~/go/pkg/android_arm64
+          key: gomobile-${{ hashFiles('enimul/go.sum', 'tun2socks/go.sum') }}-v1
+          restore-keys: |
+            gomobile-
+
       - name: Prepare Go mobile toolchain
         shell: bash
         env:
@@ -84,27 +102,16 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@latest
           gomobile init
 
-      - name: Vet Go modules
+      - name: Build Android core AAR + Vet Go modules
+        working-directory: enimul
         shell: bash
         env:
           GOFLAGS: -mod=mod
         run: |
-          cd enimul        && go vet ./...
-          cd ../tun2socks  && go vet ./...
+          # Run vet in background — it doesn't depend on AAR
+          (cd ../tun2socks && go vet ./...) &
 
-      - name: Download Go dependencies
-        shell: bash
-        working-directory: enimul
-        env:
-          GOFLAGS: -mod=mod
-        run: go mod download
-
-      - name: Build Android core AAR
-        shell: bash
-        working-directory: enimul
-        env:
-          GOFLAGS: -mod=mod
-        run: |
+          # Build AAR in foreground
           mkdir -p ../android/app/libs
           gomobile bind \
             -target=android \
@@ -113,17 +120,22 @@ jobs:
             -ldflags="-s -w -buildid=" -trimpath \
             ./mobile
 
+          # Wait for background vet to finish
+          wait
+
       - name: Build debug APK
         shell: bash
         working-directory: android
+        env:
+          ABI_FILTER: arm64-v8a
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon --parallel assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
           name: lumine-debug-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/**/*.apk
           if-no-files-found: error
           retention-days: 7

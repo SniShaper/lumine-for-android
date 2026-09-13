@@ -1,0 +1,54 @@
+version: 2
+
+updates:
+  # Go modules (enimul): check weekly, grouped into one PR.
+  - package-ecosystem: gomod
+    directory: /enimul
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    groups:
+      go-modules:
+        patterns:
+          - "*"
+
+  # Go modules (tun2socks fork): check weekly, grouped into one PR.
+  - package-ecosystem: gomod
+    directory: /tun2socks
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    groups:
+      tun2socks-deps:
+        patterns:
+          - "*"
+
+  # Gradle (Android app): check weekly, grouped into one PR.
+  - package-ecosystem: gradle
+    directory: /android
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    groups:
+      gradle-deps:
+        patterns:
+          - "*"
+
+  # GitHub Actions: check weekly, grouped into one PR.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
+    groups:
+      actions:
+        patterns:
+          - "*"

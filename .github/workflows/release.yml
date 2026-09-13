@@ -1,32 +1,22 @@
-name: Android Release
+name: Release
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: Optional tag name to publish, for example v1.0.0
-        required: false
-        type: string
-      release_name:
-        description: Optional GitHub release title
-        required: false
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
         type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: android-release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-release:
+  release:
     runs-on: ubuntu-latest
     env:
       ANDROID_API_LEVEL: '36'
@@ -35,6 +25,7 @@ jobs:
       ANDROID_NDK_VERSION: '30.0.14904198'
       RELEASE_APK_GLOB: android/app/build/outputs/apk/release/*.apk
       HAS_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -45,7 +36,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: enimul/go.mod
-          cache-dependency-path: enimul/go.sum
+          cache-dependency-path: |
+            enimul/go.sum
+            tun2socks/go.sum
           cache: true
 
       - name: Set up Java
@@ -122,7 +115,7 @@ jobs:
         run: |
           echo "$HAS_ANDROID_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
 
-      - name: Build APKs
+      - name: Build release APKs
         shell: bash
         working-directory: android
         env:
@@ -134,69 +127,26 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
 
-      - name: Compute artifact metadata
-        id: meta
-        shell: bash
-        env:
-          INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
-          INPUT_RELEASE_NAME: ${{ github.event.inputs.release_name }}
-        run: |
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            tag="${GITHUB_REF_NAME}"
-          else
-            tag="${INPUT_TAG_NAME}"
-          fi
-
-          if [[ -n "$tag" ]]; then
-            suffix="$tag"
-            should_release=true
-          else
-            suffix="${GITHUB_SHA::7}"
-            should_release=false
-          fi
-
-          release_name="${INPUT_RELEASE_NAME}"
-          if [[ -z "$release_name" && -n "$tag" ]]; then
-            release_name="$tag"
-          fi
-
-          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
-          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
-          echo "artifact_suffix=$suffix" >> "$GITHUB_OUTPUT"
-
-      - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: lumine-android-${{ steps.meta.outputs.artifact_suffix }}
-          path: |
-            ${{ env.RELEASE_APK_GLOB }}
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Publish GitHub release
-        if: steps.meta.outputs.should_release == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
         run: |
+          tag="$VERSION"
+          title="$VERSION"
+
           mkdir -p release-assets
           shopt -s nullglob
-          release_apks=(android/app/build/outputs/apk/release/*.apk)
+          release_apks=(${{ env.RELEASE_APK_GLOB }})
           if [[ ${#release_apks[@]} -eq 0 ]]; then
             echo "Release APKs not found"
             exit 1
           fi
           for release_apk in "${release_apks[@]}"; do
             base_name="$(basename "$release_apk")"
-            cp "$release_apk" "release-assets/lumine-${{ steps.meta.outputs.artifact_suffix }}-${base_name}"
+            cp "$release_apk" "release-assets/lumine-${tag}-${base_name}"
           done
-
-          tag="${{ steps.meta.outputs.release_tag }}"
-          title="${{ steps.meta.outputs.release_name }}"
-          if [[ -z "$title" ]]; then
-            title="$tag"
-          fi
 
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" release-assets/* --clobber

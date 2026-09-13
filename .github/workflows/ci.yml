@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_API_LEVEL: '36'
+      GOMOBILE_ANDROID_API: '24'
+      ANDROID_BUILD_TOOLS: '36.0.0'
+      ANDROID_NDK_VERSION: '30.0.14904198'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: enimul/go.mod
+          cache-dependency-path: |
+            enimul/go.sum
+            tun2socks/go.sum
+          cache: true
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Resolve Android environment
+        shell: bash
+        run: |
+          if [[ -n "${ANDROID_SDK_ROOT:-}" && -z "${ANDROID_HOME:-}" ]]; then
+            echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          elif [[ -n "${ANDROID_HOME:-}" && -z "${ANDROID_SDK_ROOT:-}" ]]; then
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          fi
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -n "$sdk_root" ]]; then
+            echo "ANDROID_NDK_HOME=$sdk_root/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+            echo "NDK_HOME=$sdk_root/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install Android packages
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Prepare Go mobile toolchain
+        shell: bash
+        env:
+          GOFLAGS: -mod=mod
+        run: |
+          GOBIN="$(go env GOPATH)/bin"
+          echo "$GOBIN" >> "$GITHUB_PATH"
+          export PATH="$GOBIN:$PATH"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Vet Go modules
+        shell: bash
+        env:
+          GOFLAGS: -mod=mod
+        run: |
+          cd enimul   && go vet ./...
+          cd ../tun2socks && go vet ./...
+
+      - name: Download Go dependencies
+        shell: bash
+        working-directory: enimul
+        env:
+          GOFLAGS: -mod=mod
+        run: go mod download
+
+      - name: Build Android core AAR
+        shell: bash
+        working-directory: enimul
+        env:
+          GOFLAGS: -mod=mod
+        run: |
+          mkdir -p ../android/app/libs
+          gomobile bind \
+            -target=android \
+            -androidapi "${GOMOBILE_ANDROID_API}" \
+            -o ../android/app/libs/LumineCore.aar \
+            -ldflags="-s -w -buildid=" -trimpath \
+            ./mobile
+
+      - name: Build debug APK
+        shell: bash
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumine-debug-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7

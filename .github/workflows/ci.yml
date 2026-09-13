@@ -73,12 +73,6 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
-      - name: Cache gomobile toolchain
-        uses: actions/cache@v4
-        with:
-          path: ~/go/bin
-          key: gomobile-${{ runner.os }}-go-${{ hashFiles('enimul/go.mod') }}-v1
-
       - name: Prepare Go mobile toolchain
         shell: bash
         env:
@@ -87,12 +81,8 @@ jobs:
           GOBIN="$(go env GOPATH)/bin"
           echo "$GOBIN" >> "$GITHUB_PATH"
           export PATH="$GOBIN:$PATH"
-          if ! command -v gomobile &>/dev/null; then
-            go install golang.org/x/mobile/cmd/gomobile@latest
-          fi
-          if ! command -v gobind &>/dev/null; then
-            gomobile init
-          fi
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
 
       - name: Vet Go modules
         shell: bash

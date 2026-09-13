@@ -52,6 +52,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Resolve Android environment
+        id: sdk-env
         shell: bash
         run: |
           if [[ -n "${ANDROID_SDK_ROOT:-}" && -z "${ANDROID_HOME:-}" ]]; then
@@ -64,6 +65,19 @@ jobs:
             echo "ANDROID_NDK_HOME=$sdk_root/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
             echo "NDK_HOME=$sdk_root/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
           fi
+          echo "sdk_root=$sdk_root" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Android SDK components
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.sdk-env.outputs.sdk_root }}/platforms
+            ${{ steps.sdk-env.outputs.sdk_root }}/platform-tools
+            ${{ steps.sdk-env.outputs.sdk_root }}/build-tools
+            ${{ steps.sdk-env.outputs.sdk_root }}/ndk
+          key: android-sdk-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_BUILD_TOOLS }}-${{ env.ANDROID_NDK_VERSION }}-v1
+          restore-keys: |
+            android-sdk-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_BUILD_TOOLS }}-
 
       - name: Install Android packages
         shell: bash
@@ -77,10 +91,19 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
+      - name: Cache gomobile toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/gomobile-cache
+          key: gomobile-${{ runner.os }}-go-${{ hashFiles('enimul/go.mod') }}-v1
+          restore-keys: |
+            gomobile-${{ runner.os }}-go-
+
       - name: Prepare Go mobile toolchain
         shell: bash
         env:
           GOFLAGS: -mod=mod
+          GOMOBILE_CACHE: ~/gomobile-cache
         run: |
           GOBIN="$(go env GOPATH)/bin"
           echo "$GOBIN" >> "$GITHUB_PATH"

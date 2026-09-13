@@ -42,14 +42,19 @@ var (
 	lastDNSConfig   DNSConfig
 )
 
+// runtimeStateMu 保护上述 DNS 运行时全局变量与 desync.go 中的 TTL 探测全局
+// 变量：setDNS/setTTLProbing（配置加载、网络切换重建）与在途会话并发读之间
+// 的数据竞争。写侧在局部完成全部校验与构建后，在锁下一次性提交。
+var runtimeStateMu sync.RWMutex
+
 type DNSConfig struct {
-	Type          string `json:"type"`
-	Addr          string `json:"addr"`
+	Type          string   `json:"type"`
+	Addr          string   `json:"addr"`
 	Resolvers     []string `json:"resolvers,omitempty"`
-	SingleFlight  bool   `json:"singleflight"`
-	DisableCache  bool   `json:"disable_cache"`
-	CacheCapacity uint32 `json:"cache_capacity"`
-	EDNS0Subnet   string `json:"edns0_subnet"`
+	SingleFlight  bool     `json:"singleflight"`
+	DisableCache  bool     `json:"disable_cache"`
+	CacheCapacity uint32   `json:"cache_capacity"`
+	EDNS0Subnet   string   `json:"edns0_subnet"`
 
 	UDPSize       uint16 `json:"udp_size"`
 	ClientTimeout string `json:"client_timeout"`
@@ -59,21 +64,32 @@ type DNSConfig struct {
 	DoHSocks5Addr string `json:"doh_socks5_addr"`
 }
 
-// exchangeMsg 依次尝试 DNS 端点，成功后粘住该端点（索引缓存在 dnsExchangeIdx），
-// 失败时轮换到下一端点，全部失败返回聚合错误。未配置端点列表时回退单 dnsExchange
-// （兼容测试与代码内联 stub）。
+// exchangeUpstream 返回当前配置的单端点上游交换函数（无锁快照读取）。
+func exchangeUpstream(req *dns.Msg) (*dns.Msg, error) {
+	runtimeStateMu.RLock()
+	single := dnsExchange
+	runtimeStateMu.RUnlock()
+	if single == nil {
+		return nil, E.New("no dns upstream configured")
+	}
+	return single(req)
+}
+
 func exchangeMsg(req *dns.Msg) (resp *dns.Msg, err error) {
-	if len(dnsExchanges) == 0 {
-		if dnsExchange == nil {
+	runtimeStateMu.RLock()
+	exchanges, single := dnsExchanges, dnsExchange
+	runtimeStateMu.RUnlock()
+	if len(exchanges) == 0 {
+		if single == nil {
 			return nil, E.New("no dns upstream configured")
 		}
-		return dnsExchange(req)
+		return single(req)
 	}
-	start := int(dnsExchangeIdx.Load()) % len(dnsExchanges)
+	start := int(dnsExchangeIdx.Load()) % len(exchanges)
 	var lastErr error
-	for i := 0; i < len(dnsExchanges); i++ {
-		idx := (start + i) % len(dnsExchanges)
-		resp, err = dnsExchanges[idx](req)
+	for i := 0; i < len(exchanges); i++ {
+		idx := (start + i) % len(exchanges)
+		resp, err = exchanges[idx](req)
 		if err == nil {
 			dnsExchangeIdx.Store(int64(idx))
 			return resp, nil
@@ -85,12 +101,10 @@ func exchangeMsg(req *dns.Msg) (resp *dns.Msg, err error) {
 }
 
 func setDNS(c DNSConfig) error {
-	lastDNSConfig = c
 	if c.Addr == "" {
 		return E.New("dns.addr cannot be empty")
 	}
 
-	dnsAddr = c.Addr
 	endpoints := []string{c.Addr}
 	for _, r := range c.Resolvers {
 		r = strings.TrimSpace(r)
@@ -98,7 +112,12 @@ func setDNS(c DNSConfig) error {
 			endpoints = append(endpoints, r)
 		}
 	}
-	dnsExchanges = make([]func(*dns.Msg) (*dns.Msg, error), 0, len(endpoints))
+
+	var (
+		client    DNSClient
+		hClient   *http.Client
+		exchanges = make([]func(*dns.Msg) (*dns.Msg, error), 0, len(endpoints))
+	)
 
 	switch c.Type {
 	case "", "udp": // default
@@ -144,39 +163,39 @@ func setDNS(c DNSConfig) error {
 				minRTT:      minRTT,
 			}
 		}
-		dnsClient = exClient
+		client = exClient
 		for _, ep := range endpoints {
 			if _, err := netip.ParseAddrPort(ep); err != nil {
 				return E.WithStr("invalid dns.addr", err)
 			}
 			addr := ep
-			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+			exchanges = append(exchanges, func(req *dns.Msg) (*dns.Msg, error) {
 				resp, _, err := exClient.Exchange(req, addr)
 				return resp, err
 			})
 		}
 	case "tcp":
 		cli := &dns.Client{Net: "tcp"}
-		dnsClient = cli
+		client = cli
 		for _, ep := range endpoints {
 			if _, err := netip.ParseAddrPort(ep); err != nil {
 				return E.WithStr("invalid dns.addr", err)
 			}
 			addr := ep
-			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+			exchanges = append(exchanges, func(req *dns.Msg) (*dns.Msg, error) {
 				resp, _, err := cli.Exchange(req, addr)
 				return resp, err
 			})
 		}
 	case "tls":
 		cli := &dns.Client{Net: "tcp-tls"}
-		dnsClient = cli
+		client = cli
 		for _, ep := range endpoints {
 			if _, err := netip.ParseAddrPort(ep); err != nil {
 				return E.WithStr("invalid dns.addr", err)
 			}
 			addr := ep
-			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+			exchanges = append(exchanges, func(req *dns.Msg) (*dns.Msg, error) {
 				resp, _, err := cli.Exchange(req, addr)
 				return resp, err
 			})
@@ -205,9 +224,9 @@ func setDNS(c DNSConfig) error {
 					return dialer.Dial(network, addr)
 				}
 			}
-			client := &http.Client{Transport: transport}
+			hc := &http.Client{Transport: transport}
 			endpoint := ep
-			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+			exchanges = append(exchanges, func(req *dns.Msg) (*dns.Msg, error) {
 				wire, err := req.Pack()
 				if err != nil {
 					return nil, E.WithStr("pack dns request", err)
@@ -218,7 +237,7 @@ func setDNS(c DNSConfig) error {
 					return nil, E.WithStr("build http request", err)
 				}
 				httpReq.Header.Set("Accept", "application/dns-message")
-				httpResp, err := client.Do(httpReq)
+				httpResp, err := hc.Do(httpReq)
 				if err != nil {
 					return nil, E.WithStr("http request", err)
 				}
@@ -237,14 +256,14 @@ func setDNS(c DNSConfig) error {
 				return resp, nil
 			})
 		}
-		httpClient = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+		hClient = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
 	case "quic":
 		for _, ep := range endpoints {
 			if _, _, err := net.SplitHostPort(ep); err != nil {
 				ep = net.JoinHostPort(ep, "853")
 			}
 			dq := newDoQClient(ep)
-			dnsExchanges = append(dnsExchanges, func(req *dns.Msg) (*dns.Msg, error) {
+			exchanges = append(exchanges, func(req *dns.Msg) (*dns.Msg, error) {
 				return dq.exchange(req)
 			})
 		}
@@ -252,29 +271,27 @@ func setDNS(c DNSConfig) error {
 		return E.NewAny("unknown dns.type: ", c.Type)
 	}
 
-	if len(dnsExchanges) > 0 {
-		dnsExchange = dnsExchanges[0]
-	}
-
+	var group *singleflight.Group[string, string]
 	if c.SingleFlight {
-		dnsResolveGroup = new(singleflight.Group[string, string])
+		group = new(singleflight.Group[string, string])
 	}
 
+	var cache, ipCache *freelru.ShardedLRU[string, string]
 	if !c.DisableCache {
-		if c.CacheCapacity == 0 {
-			c.CacheCapacity = 4096
+		capacity := c.CacheCapacity
+		if capacity == 0 {
+			capacity = 4096
 		}
 		var err error
-		dnsCache, err = freelru.NewSharded[string, string](c.CacheCapacity, hashStringXXHASH)
-		if err != nil {
+		if cache, err = freelru.NewSharded[string, string](capacity, hashStringXXHASH); err != nil {
 			return E.WithStr("init DNS cache", err)
 		}
-		ipDomainCache, err = freelru.NewSharded[string, string](c.CacheCapacity, hashStringXXHASH)
-		if err != nil {
+		if ipCache, err = freelru.NewSharded[string, string](capacity, hashStringXXHASH); err != nil {
 			return E.WithStr("init ip-domain cache", err)
 		}
 	}
 
+	var edns0 *dns.OPT
 	if c.EDNS0Subnet != "" {
 		prefix, err := netip.ParsePrefix(c.EDNS0Subnet)
 		if err != nil {
@@ -284,17 +301,35 @@ func setDNS(c DNSConfig) error {
 		if prefix.Addr().Unmap().Is6() {
 			family = 2
 		}
-		edns0 := &dns.EDNS0_SUBNET{
+		edns0Opt := &dns.EDNS0_SUBNET{
 			Code:          dns.EDNS0SUBNET,
 			Family:        family,
 			SourceNetmask: uint8(prefix.Bits()),
 			Address:       prefix.Addr().AsSlice(),
 		}
-		edns0SubnetOpt = &dns.OPT{
+		edns0 = &dns.OPT{
 			Hdr:    dns.RR_Header{Name: ".", Rrtype: dns.TypeOPT},
-			Option: []dns.EDNS0{edns0},
+			Option: []dns.EDNS0{edns0Opt},
 		}
 	}
+
+	// 全部端点校验与构建完成，锁下一次性提交，避免半提交的不一致状态。
+	runtimeStateMu.Lock()
+	lastDNSConfig = c
+	dnsAddr = c.Addr
+	dnsClient = client
+	httpClient = hClient
+	dnsExchanges = exchanges
+	if len(exchanges) > 0 {
+		dnsExchange = exchanges[0]
+	} else {
+		dnsExchange = nil
+	}
+	dnsResolveGroup = group
+	dnsCache = cache
+	ipDomainCache = ipCache
+	edns0SubnetOpt = edns0
+	runtimeStateMu.Unlock()
 
 	return nil
 }
@@ -357,22 +392,34 @@ func (m *DNSMode) UnmarshalJSON(data []byte) error {
 }
 
 func dnsClientExchange(req *dns.Msg) (resp *dns.Msg, err error) {
-	resp, _, err = dnsClient.Exchange(req, dnsAddr)
+	runtimeStateMu.RLock()
+	client, addr := dnsClient, dnsAddr
+	runtimeStateMu.RUnlock()
+	if client == nil {
+		return nil, E.New("no dns client configured")
+	}
+	resp, _, err = client.Exchange(req, addr)
 	return resp, err
 }
 
 func dohExchange(req *dns.Msg) (resp *dns.Msg, err error) {
+	runtimeStateMu.RLock()
+	addr, hc := dnsAddr, httpClient
+	runtimeStateMu.RUnlock()
+	if hc == nil {
+		return nil, E.New("no doh client configured")
+	}
 	wire, err := req.Pack()
 	if err != nil {
 		return nil, E.WithStr("pack dns request", err)
 	}
-	url := dnsAddr + "?dns=" + base64.RawURLEncoding.EncodeToString(wire)
+	url := addr + "?dns=" + base64.RawURLEncoding.EncodeToString(wire)
 	httpReq, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, E.WithStr("build http request", err)
 	}
 	httpReq.Header.Set("Accept", "application/dns-message")
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := hc.Do(httpReq)
 	if err != nil {
 		return nil, E.WithStr("http request", err)
 	}
@@ -417,8 +464,11 @@ func doDNSResolve(domain string, mode DNSMode, cacheTTL time.Duration) (string, 
 	case DNSModePreferIPv6, DNSModeIPv6Only:
 		msg.SetQuestion(domain+".", dns.TypeAAAA)
 	}
-	if edns0SubnetOpt != nil {
-		msg.Extra = []dns.RR{edns0SubnetOpt}
+	runtimeStateMu.RLock()
+	edns0, cache := edns0SubnetOpt, dnsCache
+	runtimeStateMu.RUnlock()
+	if edns0 != nil {
+		msg.Extra = []dns.RR{edns0}
 	}
 
 	resp, err := exchangeMsg(msg)
@@ -470,23 +520,26 @@ func doDNSResolve(domain string, mode DNSMode, cacheTTL time.Duration) (string, 
 	}
 
 	ipStr := ip.String()
-	if cacheTTL != 0 && cacheTTL != unsetInt && dnsCache != nil {
-		dnsCache.AddWithLifetime(domain, ipStr, cacheTTL)
+	if cacheTTL != 0 && cacheTTL != unsetInt && cache != nil {
+		cache.AddWithLifetime(domain, ipStr, cacheTTL)
 	}
 	return ipStr, nil
 }
 
 func dnsResolve(domain string, mode DNSMode, cacheTTL time.Duration) (ip string, cached bool, err error) {
-	if dnsCache != nil {
-		if ip, ok := dnsCache.Get(domain); ok {
+	runtimeStateMu.RLock()
+	cache, group := dnsCache, dnsResolveGroup
+	runtimeStateMu.RUnlock()
+	if cache != nil {
+		if ip, ok := cache.Get(domain); ok {
 			return ip, true, nil
 		}
 	}
 
-	if dnsResolveGroup == nil {
+	if group == nil {
 		ip, err = doDNSResolve(domain, mode, cacheTTL)
 	} else {
-		ip, err, _ = dnsResolveGroup.Do(domain, func() (string, error) {
+		ip, err, _ = group.Do(domain, func() (string, error) {
 			return doDNSResolve(domain, mode, cacheTTL)
 		})
 	}
@@ -607,7 +660,10 @@ func (c *antiHijackDNSClient) ExchangeWithConnContext(ctx context.Context, m *dn
 		}
 
 		if r.Id == m.Id {
-			if c.waitTimeout <= 0 || (edns0SubnetOpt != nil && hasEDNS0Subnet(r)) {
+			runtimeStateMu.RLock()
+			edns0 := edns0SubnetOpt
+			runtimeStateMu.RUnlock()
+			if c.waitTimeout <= 0 || (edns0 != nil && hasEDNS0Subnet(r)) {
 				return r, curRTT, nil
 			}
 

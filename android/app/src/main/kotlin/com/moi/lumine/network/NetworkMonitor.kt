@@ -6,7 +6,9 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.util.Log
+import com.moi.lumine.model.DnsConfig
 import com.moi.lumine.model.LumineConfig
+import com.moi.lumine.repository.ConfigRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -121,7 +123,9 @@ object NetworkMonitor {
         val target = network ?: cm.activeNetwork
         val linkProps = target?.let { cm.getLinkProperties(it) }
         val v6 = ipv6Available(linkProps)
-        val prefix = if (v6 != true) detectNat64Prefix() else null
+        // K12: load actual user DNS config instead of default LumineConfig()
+        val dnsConfig = loadActiveDnsConfig(app)
+        val prefix = if (v6 != true) detectNat64Prefix(dnsConfig) else null
         val hasDefault = cm.activeNetwork != null
         val status = NetworkStatus(
             ipv6Available = v6,
@@ -149,11 +153,36 @@ object NetworkMonitor {
     }
 
     /**
+     * K12: Load the user's actual DNS config from the currently selected
+     * configuration file rather than using a default LumineConfig().
+     */
+    private suspend fun loadActiveDnsConfig(app: Context): DnsConfig {
+        return try {
+            val repo = ConfigRepository(app)
+            val selectedName = repo.getSelectedConfigName()
+            repo.loadConfig(selectedName)?.dns ?: LumineConfig().dns
+        } catch (e: Exception) {
+            Log.w(TAG, "loadActiveDnsConfig failed, using default", e)
+            LumineConfig().dns
+        }
+    }
+
+    /**
      * RFC 7050：向 DoH 查询 ipv4only.arpa 的 AAAA；若应答内嵌
      * 192.0.0.170 / 192.0.0.171（64:ff9b:: 兼容），低 32 位置零即 NAT64 前缀。
+     *
+     * K12: Uses the user's actual DNS config; skips probe for non-DoH types
+     * (e.g., "udp", "tcp") since only DoH endpoints support DNS-over-HTTPS
+     * query format required by this probe.
      */
-    private suspend fun detectNat64Prefix(): String? = withContext(Dispatchers.IO) {
-        val dohUrl = LumineConfig().dns.addr
+    private suspend fun detectNat64Prefix(dnsConfig: DnsConfig): String? = withContext(Dispatchers.IO) {
+        // K12: skip NAT64 probe for non-DoH DNS types
+        val dnsType = dnsConfig.type.lowercase()
+        if (dnsType != "https" && dnsType != "doh") {
+            Log.d(TAG, "detectNat64Prefix: skipping non-DoH DNS type=$dnsType")
+            return@withContext null
+        }
+        val dohUrl = dnsConfig.addr
         if (dohUrl.isBlank()) return@withContext null
         val url = try {
             val sb = java.lang.StringBuilder(dohUrl)

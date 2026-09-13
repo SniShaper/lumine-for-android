@@ -22,7 +22,7 @@ type TUN struct {
 	name string
 }
 
-func Open(name string, mtu uint32) (device.Device, error) {
+func Open(name string, mtu uint32) (_ device.Device, err error) {
 	t := &TUN{name: name, mtu: mtu}
 
 	if len(t.name) >= unix.IFNAMSIZ {
@@ -34,6 +34,13 @@ func Open(name string, mtu uint32) (device.Device, error) {
 		return nil, fmt.Errorf("create tun: %w", err)
 	}
 	t.fd = fd
+
+	// 失败路径统一关闭已打开的 TUN fd，避免泄漏。
+	defer func() {
+		if err != nil {
+			_ = unix.Close(fd)
+		}
+	}()
 
 	if t.mtu > 0 {
 		if err := setMTU(t.name, t.mtu); err != nil {

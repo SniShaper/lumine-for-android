@@ -6,6 +6,7 @@ import android.content.Intent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class BootReceiver : BroadcastReceiver() {
@@ -17,12 +18,16 @@ class BootReceiver : BroadcastReceiver() {
         if (!KeepAlive.shouldRun(context)) return
 
         val pendingResult = goAsync()
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        // 作用域生命周期与 goAsync 绑定：任务结束（含异常）后 cancel，
+        // 避免每次广播遗留一个永不取消的 CoroutineScope。
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope.launch {
             try {
                 KeepAlive.tryRestart(context)
                 KeepAlive.scheduleAll(context)
             } finally {
                 pendingResult.finish()
+                scope.cancel()
             }
         }
     }

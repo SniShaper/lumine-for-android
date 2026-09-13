@@ -49,6 +49,7 @@ func getNetStats(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	defer conn.Close()
 
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()

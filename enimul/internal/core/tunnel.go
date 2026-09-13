@@ -85,6 +85,13 @@ func handleTunnel(
 		} else {
 			logger.Info("Unknown protocol")
 		}
+		if dstConn == nil {
+			dstConn, err = dial.DialTCPTimeout(target, p.ConnectTimeout)
+			if err != nil {
+				logger.Error("Connection to ", oldTarget, " failed: ", err)
+				return
+			}
+		}
 		if n := br.Buffered(); n > 0 {
 			buf, err := br.Peek(n)
 			if err != nil {

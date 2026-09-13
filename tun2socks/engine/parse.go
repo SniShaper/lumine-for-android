@@ -33,7 +33,7 @@ func parseRestAPI(s string) (*url.URL, error) {
 		return nil, err
 	}
 	if addr.IP == nil {
-		addr.IP = net.IPv4zero /* default: 0.0.0.0 */
+		addr.IP = net.IPv4(127, 0, 0, 1) /* default: 127.0.0.1 (D5: loopback-only by default) */
 	}
 	u.Host = addr.String()
 

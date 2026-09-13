@@ -72,7 +72,9 @@ func sendWithNoise(
 				if spliceErr = err; spliceErr == syscall.EINTR {
 					continue
 				}
-				remaining -= int(n)
+				if n > 0 {
+					remaining -= int(n)
+				}
 				if spliceErr != nil {
 					return spliceErr != syscall.EAGAIN
 				}

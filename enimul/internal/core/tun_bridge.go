@@ -144,26 +144,27 @@ func (c *tunPolicyConn) handleTLSLocked(record []byte) error {
 	}
 
 	mode := p.Mode
-	if sniStart > 0 && sniLen > 0 {
-		if hasECH {
-			c.logger.Info("ECH detected, ignored")
-			mode = ModeDirect
-		} else if sniStr := string(record[sniStart : sniStart+sniLen]); sniStr != "" {
-			if domainPolicy, exists := domainMatcher.Find(sniStr); exists {
-				sniPolicy := mergePolicies(domainPolicy, &defaultPolicy)
-				switch sniPolicy.Mode {
-				case ModeBlock:
-					c.logger.Info("Connection blocked: ", sniStr)
-					c.closed = true
-					_ = c.Conn.Close()
-					return io.EOF
-				case ModeTLSAlert:
-					c.logger.Info("Connection blocked (TLS alert): ", sniStr)
-					c.closed = true
-					sendTLSAlert(c.logger, c.Conn, prtVer, tlsAlertAccessDenied, tlsAlertLevelFatal)
-					_ = c.Conn.Close()
-					return io.EOF
-				}
+	if sniStart <= 0 || sniLen <= 0 {
+		c.logger.Info("SNI not found")
+		mode = ModeDirect
+	} else if hasECH {
+		c.logger.Info("ECH detected, ignored")
+		mode = ModeDirect
+	} else if sniStr := string(record[sniStart : sniStart+sniLen]); sniStr != "" {
+		if domainPolicy, exists := domainMatcher.Find(sniStr); exists {
+			sniPolicy := mergePolicies(domainPolicy, &defaultPolicy)
+			switch sniPolicy.Mode {
+			case ModeBlock:
+				c.logger.Info("Connection blocked: ", sniStr)
+				c.closed = true
+				_ = c.Conn.Close()
+				return io.EOF
+			case ModeTLSAlert:
+				c.logger.Info("Connection blocked (TLS alert): ", sniStr)
+				c.closed = true
+				sendTLSAlert(c.logger, c.Conn, prtVer, tlsAlertAccessDenied, tlsAlertLevelFatal)
+				_ = c.Conn.Close()
+				return io.EOF
 			}
 		}
 	}

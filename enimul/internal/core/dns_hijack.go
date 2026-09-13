@@ -43,25 +43,25 @@ func dnsLogger() log.Logger {
 
 func handleDNSQuery(req *dns.Msg) (*dns.Msg, error) {
 	if len(req.Question) != 1 {
-		return dnsExchange(req)
+		return exchangeUpstream(req)
 	}
 
 	question := req.Question[0]
 	if question.Qclass != dns.ClassINET {
-		return dnsExchange(req)
+		return exchangeUpstream(req)
 	}
 
 	domain := strings.ToLower(strings.TrimSuffix(question.Name, "."))
 	switch question.Qtype {
 	case dns.TypeHTTPS:
 		dnsLogger().Info("DNS HTTPS passthrough: domain=", domain)
-		return dnsExchange(req)
+		return exchangeUpstream(req)
 	case dns.TypeA:
 		return buildFakeAddressResponse(req, domain, dns.TypeA)
 	case dns.TypeAAAA:
 		return buildFakeAddressResponse(req, domain, dns.TypeAAAA)
 	default:
-		return dnsExchange(req)
+		return exchangeUpstream(req)
 	}
 }
 
@@ -72,7 +72,7 @@ func buildFakeAddressResponse(req *dns.Msg, domain string, qtype uint16) (*dns.M
 		qtypeName = fmt.Sprintf("TYPE%d", qtype)
 	}
 
-	upstreamResp, err := dnsExchange(req)
+	upstreamResp, err := exchangeUpstream(req)
 	if err != nil {
 		return nil, E.WithStr("upstream dns exchange", err)
 	}

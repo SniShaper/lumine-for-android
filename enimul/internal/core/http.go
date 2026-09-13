@@ -154,6 +154,10 @@ func handleConnect(logger log.Logger, w http.ResponseWriter, req *http.Request) 
 	_, err = cliConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 	if err != nil {
 		logger.Error("Send 200: ", err)
+		// 回复写出失败：客户端已不可达，已拨号的上游连接需在此关闭。
+		if dstConn != nil {
+			dstConn.Close()
+		}
 		return
 	}
 

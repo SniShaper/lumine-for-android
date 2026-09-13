@@ -17,6 +17,12 @@ const (
 	tcpConnectTimeout = 5 * time.Second
 	// tcpWaitTimeout implements a TCP half-close timeout.
 	tcpWaitTimeout = 60 * time.Second
+	// tcpWriteTimeout bounds each individual relay Write: a peer that
+	// ACKs but never reads (or a dead peer with a full send buffer) can
+	// no longer pin the relay goroutine forever. The deadline rolls
+	// forward on every Write, so slow-but-progressing receivers are
+	// unaffected.
+	tcpWriteTimeout = 60 * time.Second
 	// udpSessionTimeout is the default timeout for UDP sessions.
 	udpSessionTimeout = 60 * time.Second
 )
@@ -40,6 +46,9 @@ type Tunnel struct {
 
 	procOnce   sync.Once
 	procCancel context.CancelFunc
+	// procDone is closed when process() exits, so that HandleTCP/HandleUDP
+	// do not block forever on the unbuffered queues of a dead tunnel.
+	procDone chan struct{}
 }
 
 func New(dialer proxy.Dialer, manager *statistic.Manager) *Tunnel {
@@ -64,14 +73,25 @@ func (t *Tunnel) UDPIn() chan<- adapter.UDPConn {
 }
 
 func (t *Tunnel) HandleTCP(conn adapter.TCPConn) {
-	t.TCPIn() <- conn
+	select {
+	case t.tcpQueue <- conn:
+	case <-t.procDone:
+		// The tunnel is no longer processing: close the connection
+		// instead of blocking the caller forever.
+		conn.Close()
+	}
 }
 
 func (t *Tunnel) HandleUDP(conn adapter.UDPConn) {
-	t.UDPIn() <- conn
+	select {
+	case t.udpQueue <- conn:
+	case <-t.procDone:
+		conn.Close()
+	}
 }
 
 func (t *Tunnel) process(ctx context.Context) {
+	defer close(t.procDone)
 	for {
 		select {
 		case conn := <-t.tcpQueue:
@@ -89,6 +109,7 @@ func (t *Tunnel) ProcessAsync() {
 	t.procOnce.Do(func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.procCancel = cancel
+		t.procDone = make(chan struct{})
 		go t.process(ctx)
 	})
 }

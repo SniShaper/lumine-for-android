@@ -54,6 +54,8 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.UnknownHostException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -75,6 +77,7 @@ fun EvolutionScreen(navController: NavController, viewModel: ConfigViewModel) {
     var domainsText by remember { mutableStateOf("") }
     var enableIpv6 by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf(false) }
+    var testJob by remember { mutableStateOf<Job?>(null) }
     var progress by remember { mutableStateOf(0) }
     var total by remember { mutableStateOf(0) }
     var entries by remember { mutableStateOf<List<EvoEntry>>(emptyList()) }
@@ -111,12 +114,15 @@ fun EvolutionScreen(navController: NavController, viewModel: ConfigViewModel) {
                     }
                 }
             }
-            progress = list.size
-            entries = results
-            tempRules = results.filter { it.ok }.map { it.domain }.toSet()
+            // 取消发生在最后一轮探测之后时，不能把结果提交覆盖"已停止"状态（K13）
+            if (isActive) {
+                progress = list.size
+                entries = results
+                tempRules = results.filter { it.ok }.map { it.domain }.toSet()
+                notice = "测试完成，共 ${results.size} 个域名"
+            }
             running = false
-            notice = "测试完成，共 ${results.size} 个域名"
-        }
+        }.also { testJob = it }
     }
 
     Scaffold(
@@ -159,7 +165,13 @@ fun EvolutionScreen(navController: NavController, viewModel: ConfigViewModel) {
                     progress = progress,
                     total = total,
                     onStart = { startTest() },
-                    onStop = { running = false; notice = "测试已停止" }
+                    onStop = {
+                        // 真正取消探测协程，而非仅翻转标志（K13）
+                        testJob?.cancel()
+                        testJob = null
+                        running = false
+                        notice = "测试已停止"
+                    }
                 )
                 1 -> RulesTab(
                     config = config,

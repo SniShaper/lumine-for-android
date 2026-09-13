@@ -29,7 +29,7 @@ func NewSocks5(addr, user, pass string) (*Socks5, error) {
 	unix := len(addr) > 0 && addr[0] == '/'
 
 	// For support Linux abstract namespace
-	if len(addr) > 2 && addr[1] == '@' || addr[1] == 0x00 {
+	if len(addr) > 2 && (addr[1] == '@' || addr[1] == 0x00) {
 		addr = addr[1:]
 	}
 
@@ -131,12 +131,18 @@ func (ss *Socks5) DialUDP(*M.Metadata) (_ net.PacketConn, err error) {
 
 	bindAddr := addr.UDPAddr()
 	if bindAddr == nil {
+		// Keep-alive goroutine is already running: close both ends so it
+		// unblocks and the UDP socket is not leaked.
+		c.Close()
+		pc.Close()
 		return nil, fmt.Errorf("invalid UDP binding address: %#v", addr)
 	}
 
 	if bindAddr.IP.IsUnspecified() { /* e.g. "0.0.0.0" or "::" */
 		udpAddr, err := net.ResolveUDPAddr("udp", ss.Addr())
 		if err != nil {
+			c.Close()
+			pc.Close()
 			return nil, fmt.Errorf("resolve udp address %s: %w", ss.Addr(), err)
 		}
 		bindAddr.IP = udpAddr.IP

@@ -101,6 +101,9 @@ func start() error {
 		netstack,
 	} {
 		if err := f(_defaultKey); err != nil {
+			// Roll back the restapi listener so a failed start does not
+			// leak a server that outlives the engine.
+			restapi.Stop()
 			return err
 		}
 	}
@@ -109,6 +112,8 @@ func start() error {
 
 func stop() (err error) {
 	_engineMu.Lock()
+	defer _engineMu.Unlock()
+	restapi.Stop()
 	if _defaultDevice != nil {
 		_defaultDevice.Close()
 	}
@@ -116,7 +121,6 @@ func stop() (err error) {
 		_defaultStack.Close()
 		_defaultStack.Wait()
 	}
-	_engineMu.Unlock()
 	return nil
 }
 
@@ -187,7 +191,7 @@ func restAPI(k *Key) error {
 				log.Errorf("[RESTAPI] failed to start: %v", err)
 			}
 		}()
-		log.Infof("[RESTAPI] serve at: %s", u)
+		log.Infof("[RESTAPI] serve at: %s", host)
 	}
 	return nil
 }

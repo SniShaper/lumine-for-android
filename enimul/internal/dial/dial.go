@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -51,27 +52,55 @@ func DialTCPTimeout(address string, timeout time.Duration) (net.Conn, error) {
 
 type monitor = func() (net.IP, net.IP, string, error)
 
-func laddrMonitor(interval time.Duration, fn monitor) {
-	for range time.Tick(interval) {
-		ipv4, ipv6, zone, err := fn()
-		if err != nil {
-			logger.Error("Failed to update local address: ", err)
-			continue
+// laddrMonitorState 跟踪运行中的本地地址监测 goroutine，便于重载/关闭时停止。
+var (
+	monitorMu     sync.Mutex
+	monitorStopCh chan struct{}
+)
+
+func laddrMonitor(interval time.Duration, fn monitor, stopCh chan struct{}) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			ipv4, ipv6, zone, err := fn()
+			if err != nil {
+				logger.Error("Failed to update local address: ", err)
+				continue
+			}
+			msg := []any{"Local address updated:"}
+			if ipv4 != nil {
+				globalIPv4Dialer.Store(&net.Dialer{LocalAddr: &net.TCPAddr{IP: ipv4}})
+				msg = append(msg, " ipv4=", ipv4)
+			}
+			if ipv6 != nil {
+				globalIPv6Dialer.Store(&net.Dialer{LocalAddr: &net.TCPAddr{IP: ipv6, Zone: zone}})
+				msg = append(msg, " ipv6=", ipv6)
+			}
+			if zone != "" {
+				msg = append(msg, " zone=\"", zone, "\"")
+			}
+			logger.Info(msg...)
+		case <-stopCh:
+			return
 		}
-		msg := []any{"Local address updated:"}
-		if ipv4 != nil {
-			globalIPv4Dialer.Store(&net.Dialer{LocalAddr: &net.TCPAddr{IP: ipv4}})
-			msg = append(msg, " ipv4=", ipv4)
-		}
-		if ipv6 != nil {
-			globalIPv6Dialer.Store(&net.Dialer{LocalAddr: &net.TCPAddr{IP: ipv6, Zone: zone}})
-			msg = append(msg, " ipv6=", ipv6)
-		}
-		if zone != "" {
-			msg = append(msg, " zone=\"", zone, "\"")
-		}
-		logger.Info(msg...)
 	}
+}
+
+// stopLocalAddrMonitor 停止当前运行中的本地地址监测 goroutine（若有）。
+func stopLocalAddrMonitor() {
+	monitorMu.Lock()
+	defer monitorMu.Unlock()
+	if monitorStopCh != nil {
+		close(monitorStopCh)
+		monitorStopCh = nil
+	}
+}
+
+// StopLocalAddrMonitor 停止本地地址周期监测 goroutine（引擎关闭时调用）。
+func StopLocalAddrMonitor() {
+	stopLocalAddrMonitor()
 }
 
 var errNoInterfaceWithGateway = E.New("no interface with gateway detected")
@@ -98,13 +127,19 @@ func SetLocalAddr(o BindingOption) error {
 			}
 			zone = o.Zone
 		} else if o.ManualSelect {
-			selected = interfaces.manualSelect()
+			selected, err := interfaces.manualSelect()
+			if err != nil {
+				return err
+			}
 			zone = selected.name
 		} else {
 			selected, ok = interfaces.autoSelect(o.PreferredPrefix)
 			if !ok {
 				fmt.Fprintln(os.Stderr, "No interface with gateway detected")
-				selected = interfaces.manualSelect()
+				selected, err = interfaces.manualSelect()
+				if err != nil {
+					return err
+				}
 				zone = selected.name
 			}
 		}
@@ -174,8 +209,14 @@ func SetLocalAddr(o BindingOption) error {
 		ipv6Dialer.LocalAddr = &net.TCPAddr{IP: ipv6, Zone: zone}
 	}
 	globalIPv6Dialer.Store(ipv6Dialer)
+	// 先停旧 monitor 再按需启动新实例，避免每次配置加载叠加 goroutine。
+	stopLocalAddrMonitor()
 	if monitor != nil {
-		go laddrMonitor(o.UpdateInterval, monitor)
+		monitorMu.Lock()
+		monitorStopCh = make(chan struct{})
+		stopCh := monitorStopCh
+		monitorMu.Unlock()
+		go laddrMonitor(o.UpdateInterval, monitor, stopCh)
 	}
 	return nil
 }

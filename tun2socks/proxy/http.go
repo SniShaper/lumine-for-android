@@ -45,11 +45,20 @@ func (h *HTTP) DialContext(ctx context.Context, metadata *M.Metadata) (c net.Con
 		safeConnClose(c, err)
 	}(c)
 
-	err = h.shakeHand(metadata, c)
-	return
+	// Reuse a single buffered reader for the handshake and the subsequent
+	// relay: any payload bytes the proxy pushed right after the CONNECT
+	// response are already sitting in this buffer and must not be dropped.
+	br := bufio.NewReader(c)
+	if err = h.shakeHand(metadata, c, br); err != nil {
+		return nil, err
+	}
+	if br.Buffered() > 0 {
+		c = &bufferedConn{Conn: c, br: br}
+	}
+	return c, nil
 }
 
-func (h *HTTP) shakeHand(metadata *M.Metadata, rw io.ReadWriter) error {
+func (h *HTTP) shakeHand(metadata *M.Metadata, rw io.Writer, br *bufio.Reader) error {
 	addr := metadata.DestinationAddress()
 	req := &http.Request{
 		Method: http.MethodConnect,
@@ -70,7 +79,7 @@ func (h *HTTP) shakeHand(metadata *M.Metadata, rw io.ReadWriter) error {
 		return err
 	}
 
-	resp, err := http.ReadResponse(bufio.NewReader(rw), req)
+	resp, err := http.ReadResponse(br, req)
 	if err != nil {
 		return err
 	}
@@ -85,6 +94,17 @@ func (h *HTTP) shakeHand(metadata *M.Metadata, rw io.ReadWriter) error {
 	default:
 		return fmt.Errorf("HTTP connect status: %s", resp.Status)
 	}
+}
+
+// bufferedConn drains the handshake's bufio.Reader before reading directly
+// from the underlying connection, so pre-read payload bytes survive.
+type bufferedConn struct {
+	net.Conn
+	br *bufio.Reader
+}
+
+func (bc *bufferedConn) Read(b []byte) (int, error) {
+	return bc.br.Read(b)
 }
 
 // The Basic authentication scheme is based on the model that the client

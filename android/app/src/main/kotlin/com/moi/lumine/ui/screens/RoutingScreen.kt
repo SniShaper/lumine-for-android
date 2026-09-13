@@ -36,11 +36,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.moi.lumine.VpnRuntimeState
 import com.moi.lumine.ui.ConfigViewModel
 import com.moi.lumine.ui.components.RadioOptionRow
 import com.moi.lumine.ui.components.SectionHeader
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.collect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,18 +54,20 @@ fun RoutingScreen(navController: NavController, viewModel: ConfigViewModel) {
         mode = config.defaultPolicy.mode ?: "direct"
     }
 
-    // 实时流量流向：从引擎日志尾部提取最近 TCP/UDP 转发行
+    // 实时流量流向：从服务侧已收集的 VpnRuntimeState 日志快照提取最近的
+    // TCP/UDP 转发行。不要直接调用 Mobile.getLogs()——那会与服务日志泵
+    // 竞争抽干 Go 侧的日志缓冲。
     LaunchedEffect(isConnected) {
-        while (isConnected && isActive) {
-            runCatching {
-                val lines = mobile.Mobile.getLogs().lines().filter {
-                    it.contains("[TCP]") || it.contains("[UDP]")
-                }
-                recentFlow = lines.takeLast(4)
-            }
-            delay(1500L)
+        if (!isConnected) {
+            recentFlow = emptyList()
+            return@LaunchedEffect
         }
-        if (!isConnected) recentFlow = emptyList()
+        VpnRuntimeState.logSnapshot.collect { snapshot ->
+            recentFlow = snapshot.entries
+                .map { it.raw }
+                .filter { it.contains("[TCP]") || it.contains("[UDP]") }
+                .takeLast(4)
+        }
     }
 
     Scaffold(

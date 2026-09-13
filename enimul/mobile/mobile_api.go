@@ -9,15 +9,17 @@ import (
 	"sync"
 
 	lumine "github.com/lzpls/enimul/internal/core"
+	"github.com/lzpls/enimul/internal/dial"
 	"github.com/lzpls/enimul/internal/log"
 
 	"github.com/xjasonlyu/tun2socks/v2/engine"
 )
 
 var (
-	workingDir string
-	mu         sync.Mutex
-	isRunning  bool
+	workingDir   string
+	workingDirMu sync.RWMutex
+	mu           sync.Mutex
+	isRunning    bool
 
 	// Log management
 	logMu      sync.Mutex
@@ -66,11 +68,37 @@ func clearLogsLocked() {
 	logEntries = nil
 }
 
+// getWorkingDir 返回当前工作目录（锁保护读取；workingDirMu 为叶子锁，
+// 不会与 mu/logFileMu 形成嵌套，避免锁序反转）。
+func getWorkingDir() string {
+	workingDirMu.RLock()
+	defer workingDirMu.RUnlock()
+	return workingDir
+}
+
 // SetWorkingDir 设置核心运行的基础路径（由 Android 端提供私有目录路径）
 func SetWorkingDir(dir string) {
-	mu.Lock()
-	defer mu.Unlock()
+	workingDirMu.Lock()
+	defer workingDirMu.Unlock()
 	workingDir = dir
+}
+
+// safeConfigNameChars is the allowlist for configName characters (E10).
+// Only [A-Za-z0-9_-] is permitted to prevent path traversal via filepath.Join.
+const safeConfigNameChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+
+// isSafeConfigName returns true if name contains only characters from safeConfigNameChars
+// and is non-empty.
+func isSafeConfigName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for _, r := range name {
+		if !strings.ContainsRune(safeConfigNameChars, r) {
+			return false
+		}
+	}
+	return true
 }
 
 // StartLumine 指定配置名启动核心和 tun2socks
@@ -78,11 +106,16 @@ func StartLumine(fd int, configName string) string {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if workingDir == "" {
+	if getWorkingDir() == "" {
 		return "working directory not set"
 	}
 	if isRunning {
 		return ""
+	}
+
+	// E10: validate configName to prevent path traversal — only [A-Za-z0-9_-] allowed
+	if !isSafeConfigName(configName) {
+		return fmt.Sprintf("invalid config name: %q (only [A-Za-z0-9_-] allowed)", configName)
 	}
 
 	logMu.Lock()
@@ -91,7 +124,7 @@ func StartLumine(fd int, configName string) string {
 
 	lumine.ResetStats()
 
-	configPath := filepath.Join(workingDir, configName+".json")
+	configPath := filepath.Join(getWorkingDir(), configName+".json")
 
 	_, _, err := lumine.LoadConfig(configPath)
 	if err != nil {
@@ -141,6 +174,9 @@ func StopLumine() {
 
 	_ = engine.StopErr()
 	engine.ClearCustomProxy()
+	// 停止 IP 池扫描与本地地址监测的周期 goroutine，避免跨会话累积。
+	lumine.StopIPPools()
+	dial.StopLocalAddrMonitor()
 	isRunning = false
 	lumine.SetLogWriter(nil)
 	closeSessionLog()
@@ -183,8 +219,11 @@ func GetStats() string {
 // OnNetworkChanged 在底层默认网络切换（Wi-Fi<->蜂窝、onLost/onAvailable）后调用，
 // 清空 DNS/反向解析/TTL 缓存使后续解析走当前网络路径。
 func OnNetworkChanged() string {
-	lumine.ResetRuntimeState()
-	mainLogger.Info("network changed: runtime caches cleared")
+	if err := lumine.ResetRuntimeState(); err != nil {
+		mainLogger.Error("network changed: reset runtime state: ", err)
+	} else {
+		mainLogger.Info("network changed: runtime caches cleared")
+	}
 	return ""
 }
 
@@ -195,8 +234,9 @@ func SetLogFileEnabled(enabled bool) {
 
 // LogFilePath 返回当前会话日志目录路径，供宿主应用展示/清理（未设置工作目录时返回空）。
 func LogFilePath() string {
-	if workingDir == "" {
+	dir := getWorkingDir()
+	if dir == "" {
 		return ""
 	}
-	return filepath.Join(workingDir, "logs")
+	return filepath.Join(dir, "logs")
 }

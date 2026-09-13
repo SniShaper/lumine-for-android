@@ -11,6 +11,9 @@ import (
 )
 
 func findLastDotOrMidPos(data []byte, sniStart, sniLen int) int {
+	if sniStart < 0 || sniLen <= 0 || sniStart+sniLen > len(data) {
+		return len(data) / 2
+	}
 	subIdx := bytes.LastIndexByte(data[sniStart:sniStart+sniLen], '.')
 	if subIdx == -1 {
 		return sniLen/2 + sniStart
@@ -22,6 +25,18 @@ func sendRecords(conn net.Conn, clientHello []byte,
 	offset, length, records, segments int, minorVersion Byte,
 	oob, oobex, waitForAckEnabled bool,
 	interval time.Duration) error {
+	// Normalize unset or invalid values so a ClientHello is never silently
+	// dropped (or worse, used to build empty/negative-size slices) when
+	// num_records/num_segs are missing from the policy.
+	if records < 1 {
+		records = 1
+	}
+	if segments == 0 {
+		segments = 1
+	} else if segments < 0 {
+		// -1 (and any negative) means "records only, no segment split".
+		segments = -1
+	}
 	if len(clientHello) < 5 {
 		_, err := conn.Write(clientHello)
 		return err
@@ -47,6 +62,11 @@ func sendRecords(conn net.Conn, clientHello []byte,
 			}
 			clientHello = clientHello[35:]
 			offset -= 35
+		}
+		if segments < 1 {
+			// A single record with "records only" semantics degenerates to
+			// a single write of the whole ClientHello.
+			segments = 1
 		}
 		if segments == 1 {
 			if _, err := conn.Write(clientHello); err != nil {

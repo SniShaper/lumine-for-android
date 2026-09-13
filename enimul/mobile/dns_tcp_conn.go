@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
 
 	lumine "github.com/lzpls/enimul/internal/core"
@@ -43,6 +44,12 @@ func serveLocalDNSTCP(conn net.Conn, logger log.Logger) {
 		resp, err := lumine.HandleDNSQueryPacket(payload)
 		if err != nil {
 			logger.Error("Handle hijacked TCP DNS query:", err)
+			return
+		}
+
+		// TCP DNS 长度前缀为 uint16，超长响应不能回绕为小端长度写入。
+		if len(resp) > math.MaxUint16 {
+			logger.Error("Hijacked TCP DNS response too large:", len(resp), "bytes")
 			return
 		}
 

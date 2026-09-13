@@ -34,23 +34,25 @@ func getConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := _upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return
-	}
-
-	intervalStr := r.URL.Query().Get("interval")
+	// Validate the interval BEFORE upgrading: once the connection is
+	// hijacked a 400 can no longer be written, and a non-positive value
+	// would panic time.NewTicker.
 	interval := defaultInterval
-	if intervalStr != "" {
+	if intervalStr := r.URL.Query().Get("interval"); intervalStr != "" {
 		t, err := strconv.Atoi(intervalStr)
-		if err != nil {
+		if err != nil || t <= 0 {
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, ErrBadRequest)
 			return
 		}
-
 		interval = t
 	}
+
+	conn, err := _upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
 
 	buf := &bytes.Buffer{}
 	sendSnapshot := func() error {

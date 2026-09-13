@@ -139,9 +139,24 @@ class ConfigRepository(private val context: Context) {
     suspend fun saveConfig(name: String, config: LumineConfig) = withContext(Dispatchers.IO) {
         try {
             val file = File(context.filesDir, "$name.json")
-            file.writeText(adapter.toJson(stripDisabled(config, name)))
+            writeTextAtomic(file, adapter.toJson(stripDisabled(config, name)))
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // 同目录临时文件 + 原子重命名：进程崩溃/断电最多留下 .tmp 残留，
+    // 不会把正式配置文件截断为半写状态（K6）。
+    private fun writeTextAtomic(file: File, content: String) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeText(content)
+        if (!tmp.renameTo(file)) {
+            // Linux rename(2) 本应原子覆盖；此处兜底极少见的失败
+            file.delete()
+            if (!tmp.renameTo(file)) {
+                tmp.delete()
+                throw java.io.IOException("atomic rename failed: ${file.path}")
+            }
         }
     }
 

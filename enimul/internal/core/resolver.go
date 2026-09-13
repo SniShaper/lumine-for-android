@@ -9,10 +9,13 @@ import "github.com/lzpls/enimul/internal/freelru"
 var ipDomainCache *freelru.ShardedLRU[string, string]
 
 func rememberDomainIPMapping(domain, ip string) {
-	if domain == "" || ip == "" || ipDomainCache == nil {
+	runtimeStateMu.RLock()
+	cache := ipDomainCache
+	runtimeStateMu.RUnlock()
+	if domain == "" || ip == "" || cache == nil {
 		return
 	}
-	ipDomainCache.AddWithLifetime(ip, domain, reverseMappingTTL)
+	cache.AddWithLifetime(ip, domain, reverseMappingTTL)
 }
 
 // lookupDomainByIP checks the fake-IP store first (fake IPs never appear
@@ -21,10 +24,13 @@ func lookupDomainByIP(ip string) (string, bool) {
 	if domain, ok := lookupFakeDomainByIP(ip); ok {
 		return domain, true
 	}
-	if ip == "" || ipDomainCache == nil {
+	runtimeStateMu.RLock()
+	cache := ipDomainCache
+	runtimeStateMu.RUnlock()
+	if ip == "" || cache == nil {
 		return "", false
 	}
-	return ipDomainCache.Get(ip)
+	return cache.Get(ip)
 }
 
 type Resolver interface {

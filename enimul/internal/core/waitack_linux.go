@@ -25,6 +25,7 @@ func waitForAck(enabled bool, conn net.Conn, delay time.Duration) error {
 	var innerErr error
 	rawCtrlErr := rawConn.Control(func(fd uintptr) {
 		start := time.Now()
+		deadline := start.Add(3 * time.Second)
 		for {
 			var tcpInfo *unix.TCPInfo
 			tcpInfo, innerErr = unix.GetsockoptTCPInfo(int(fd), unix.IPPROTO_TCP, unix.TCP_INFO)
@@ -35,6 +36,10 @@ func waitForAck(enabled bool, conn net.Conn, delay time.Duration) error {
 				if time.Since(start) <= 20*time.Millisecond {
 					time.Sleep(delay)
 				}
+				return
+			}
+			if time.Now().After(deadline) {
+				innerErr = E.New("timeout waiting for peer ACK")
 				return
 			}
 			time.Sleep(10 * time.Millisecond)

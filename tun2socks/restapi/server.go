@@ -2,10 +2,13 @@ package restapi
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,12 +22,25 @@ import (
 
 var (
 	_upgrader = websocket.Upgrader{
+		// D5: validate Origin on WebSocket upgrade to prevent cross-site hijacking.
 		CheckOrigin: func(r *http.Request) bool {
-			return true
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				// Non-browser clients (curl, etc.) — allow
+				return true
+			}
+			// Allow same-origin requests
+			host := r.Host
+			return strings.HasPrefix(origin, "http://"+host) || strings.HasPrefix(origin, "https://"+host)
 		},
 	}
 
 	_endpoints = make(map[string]http.Handler)
+
+	// _listener tracks the running API listener so that it can be closed
+	// on engine stop/restart instead of leaking.
+	_listenerMu sync.Mutex
+	_listener   net.Listener
 )
 
 func registerEndpoint(pattern string, handler http.Handler) {
@@ -32,6 +48,12 @@ func registerEndpoint(pattern string, handler http.Handler) {
 }
 
 func Start(addr, token string) error {
+	// D5: refuse to start if binding to a non-loopback address without a token,
+	// as that would expose an unauthenticated management API to the network.
+	if token == "" && !isLoopbackAddr(addr) {
+		return fmt.Errorf("restapi: refusing to start on non-loopback %s without authentication token", addr)
+	}
+
 	r := chi.NewRouter()
 
 	c := cors.New(cors.Options{
@@ -53,12 +75,44 @@ func Start(addr, token string) error {
 		}
 	})
 
+	// A listener left over from a previous engine run would keep serving
+	// stale state (and hold the port): close it first.
+	_listenerMu.Lock()
+	if _listener != nil {
+		_ = _listener.Close()
+		_listener = nil
+	}
+	_listenerMu.Unlock()
+
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
-	return http.Serve(listener, r)
+	_listenerMu.Lock()
+	_listener = listener
+	_listenerMu.Unlock()
+
+	// D5: enforce read/write/idle timeouts to prevent slowloris-style
+	// connection pinning and resource exhaustion.
+	srv := &http.Server{
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	return srv.Serve(listener)
+}
+
+// Stop closes the running REST API listener, if any. It is safe to call
+// multiple times and is a no-op when the API is not running.
+func Stop() {
+	_listenerMu.Lock()
+	defer _listenerMu.Unlock()
+	if _listener != nil {
+		_ = _listener.Close()
+		_listener = nil
+	}
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +130,8 @@ func authenticator(token string) func(http.Handler) http.Handler {
 			// Browser websocket not support custom header
 			if websocket.IsWebSocketUpgrade(r) && r.URL.Query().Get("token") != "" {
 				t := r.URL.Query().Get("token")
-				if t != token {
+				// D5: constant-time comparison to prevent timing side-channels
+				if subtle.ConstantTimeCompare([]byte(t), []byte(token)) != 1 {
 					render.Status(r, http.StatusUnauthorized)
 					render.JSON(w, r, ErrUnauthorized)
 					return
@@ -89,7 +144,8 @@ func authenticator(token string) func(http.Handler) http.Handler {
 			text := strings.SplitN(header, " ", 2)
 
 			hasInvalidHeader := text[0] != "Bearer"
-			hasInvalidToken := len(text) != 2 || text[1] != token
+			// D5: constant-time comparison for bearer token
+			hasInvalidToken := len(text) != 2 || subtle.ConstantTimeCompare([]byte(text[1]), []byte(token)) != 1
 			if hasInvalidHeader || hasInvalidToken {
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, ErrUnauthorized)
@@ -111,6 +167,7 @@ func traffic(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
+		defer wsConn.Close()
 	}
 
 	if wsConn == nil {
@@ -155,4 +212,34 @@ func version(w http.ResponseWriter, r *http.Request) {
 		"commit":  V.GitCommit,
 		"modules": V.Info(),
 	})
+}
+
+// isLoopbackAddr checks whether the given network address (host:port) resolves
+// to a loopback interface. Used by D5 to enforce that an unauthenticated REST
+// API must only bind to loopback.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// addr may be bare host without port; treat as-is
+		host = addr
+	}
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip != nil {
+		return ip.IsLoopback()
+	}
+	// Resolve hostname and check all resulting IPs
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		return false
+	}
+	for _, a := range addrs {
+		ip = net.ParseIP(a)
+		if ip == nil || !ip.IsLoopback() {
+			return false
+		}
+	}
+	return len(addrs) > 0
 }

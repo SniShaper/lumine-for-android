@@ -56,11 +56,11 @@ func LoadConfig(filePath string) (string, string, error) {
 	}
 	dial.SetLogger(newLogger("[dial]"))
 
-	if len(conf.IPPools) > 0 {
-		ipPools = conf.IPPools
-		for tag, pool := range ipPools {
-			pool.Init(newLogger("P[" + tag + "]"))
-		}
+	// 停止旧池的扫描 monitor，避免重载叠加；新配置无池时同样清空全局。
+	StopIPPools()
+	ipPools = conf.IPPools
+	for tag, pool := range ipPools {
+		pool.Init(newLogger("P[" + tag + "]"))
 	}
 
 	defaultPolicy = conf.DefaultPolicy

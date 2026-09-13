@@ -20,9 +20,12 @@ func init() {
 	// like Android.
 	net.DefaultResolver.PreferGo = true
 	net.DefaultResolver.Dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
-		if conn, err := dnsDialer.DialContext(ctx, network, dns1); err != nil {
+		conn, err := dnsDialer.DialContext(ctx, network, dns1)
+		if err == nil {
 			return conn, nil
 		}
+		// Fall back to the secondary resolver instead of returning an
+		// inverted (nil conn, nil err) pair.
 		return dnsDialer.DialContext(ctx, network, dns2)
 	}
 }

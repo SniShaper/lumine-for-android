@@ -57,7 +57,8 @@ func pipe(origin, remote net.Conn) {
 func unidirectionalStream(dst, src net.Conn, dir string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	buf := buffer.Get(buffer.RelayBufferSize)
-	if _, err := io.CopyBuffer(dst, src, buf); err != nil {
+	w := &rollingDeadlineWriter{conn: dst, timeout: tcpWriteTimeout}
+	if _, err := io.CopyBuffer(w, src, buf); err != nil {
 		log.Debugf("[TCP] copy data for %s: %v", dir, err)
 	}
 	buffer.Put(buf)
@@ -70,4 +71,16 @@ func unidirectionalStream(dst, src net.Conn, dir string, wg *sync.WaitGroup) {
 	}
 	// Set TCP half-close timeout.
 	dst.SetReadDeadline(time.Now().Add(tcpWaitTimeout))
+}
+
+// rollingDeadlineWriter sets a rolling write deadline before every Write,
+// so a stalled or malicious peer cannot block the relay indefinitely.
+type rollingDeadlineWriter struct {
+	conn    net.Conn
+	timeout time.Duration
+}
+
+func (w *rollingDeadlineWriter) Write(p []byte) (int, error) {
+	w.conn.SetWriteDeadline(time.Now().Add(w.timeout))
+	return w.conn.Write(p)
 }

@@ -32,23 +32,31 @@ type TTLProbingConfig struct {
 }
 
 func setTTLProbing(c TTLProbingConfig) error {
-	lastTTLProbingConfig = c
-	if err := loadTTLRules(c.FakeTTLRules); err != nil {
+	calc, err := buildCalcTTL(c.FakeTTLRules)
+	if err != nil {
 		return err
 	}
+	var group *singleflight.Group[string, int]
 	if c.SingleFlight {
-		ttlProbingGroup = new(singleflight.Group[string, int])
+		group = new(singleflight.Group[string, int])
 	}
+	var cache *freelru.ShardedLRU[string, int]
 	if !c.DisableCache {
-		if c.CacheCapacity == 0 {
-			c.CacheCapacity = 1024
+		capacity := c.CacheCapacity
+		if capacity == 0 {
+			capacity = 1024
 		}
-		var err error
-		ttlCache, err = freelru.NewSharded[string, int](c.CacheCapacity, hashStringXXHASH)
-		if err != nil {
+		if cache, err = freelru.NewSharded[string, int](capacity, hashStringXXHASH); err != nil {
 			return E.WithStr("init TTL cache", err)
 		}
 	}
+	// 校验与构建完成后，锁下一次性提交，避免半提交的不一致状态。
+	runtimeStateMu.Lock()
+	lastTTLProbingConfig = c
+	calcTTL = calc
+	ttlProbingGroup = group
+	ttlCache = cache
+	runtimeStateMu.Unlock()
 	return nil
 }
 
@@ -112,16 +120,16 @@ func parseTTLRules(conf string) ([]ttlRule, error) {
 	return rules, nil
 }
 
-func loadTTLRules(conf string) error {
+// buildCalcTTL 依据规则串构建 TTL 计算函数（不触碰全局变量）。
+func buildCalcTTL(conf string) (func(int) (int, error), error) {
 	if conf == "" {
-		calcTTL = func(ttl int) (int, error) { return ttl - 1, nil }
-		return nil
+		return func(ttl int) (int, error) { return ttl - 1, nil }, nil
 	}
 	rules, err := parseTTLRules(conf)
 	if err != nil {
-		return E.WithStr("parse ttl rules", err)
+		return nil, E.WithStr("parse ttl rules", err)
 	}
-	calcTTL = func(ttl int) (int, error) {
+	return func(ttl int) (int, error) {
 		for _, r := range rules {
 			if ttl >= r.threshold {
 				if r.typ == '-' {
@@ -132,8 +140,7 @@ func loadTTLRules(conf string) error {
 			}
 		}
 		return 0, E.New("no matching ttl rule")
-	}
-	return nil
+	}, nil
 }
 
 func getMinimumReachableTTL(addr string, ipv6 bool, maxTTL, attempts int, dialTimeout, cacheTTL time.Duration) (int, bool, error) {
@@ -142,15 +149,19 @@ func getMinimumReachableTTL(addr string, ipv6 bool, maxTTL, attempts int, dialTi
 		return 0, false, err
 	}
 
-	if ttlCache != nil {
-		if ttl, ok := ttlCache.Get(ip); ok {
+	runtimeStateMu.RLock()
+	cache, group := ttlCache, ttlProbingGroup
+	runtimeStateMu.RUnlock()
+
+	if cache != nil {
+		if ttl, ok := cache.Get(ip); ok {
 			return ttl, true, nil
 		}
 	}
 
 	ttl := -1
-	if ttlProbingGroup != nil {
-		ttl, err, _ = ttlProbingGroup.Do(addr, func() (int, error) {
+	if group != nil {
+		ttl, err, _ = group.Do(addr, func() (int, error) {
 			return probeMinimumReachableTTL(ip, addr, ipv6, maxTTL, attempts, dialTimeout, cacheTTL)
 		})
 	} else {
@@ -170,7 +181,13 @@ func getFakeTTL(logger log.Logger, p *Policy, addr string, ipv6 bool) (int, erro
 	if ttl == unsetInt {
 		return -1, E.New("reachable ttl not found")
 	}
-	if ttl, err = calcTTL(ttl); err != nil {
+	runtimeStateMu.RLock()
+	calc := calcTTL
+	runtimeStateMu.RUnlock()
+	if calc == nil {
+		return -1, E.New("ttl probing not configured")
+	}
+	if ttl, err = calc(ttl); err != nil {
 		return -1, E.WithStr("calculate fake ttl", err)
 	}
 	if logger != nil {
@@ -202,6 +219,10 @@ func probeMinimumReachableTTL(
 	level, opt := ttlLevelOption(isIPv6)
 	dialer := dial.NewDialer(isIPv6)
 	dialer.Timeout = dialTimeout
+
+	runtimeStateMu.RLock()
+	cache := ttlCache
+	runtimeStateMu.RUnlock()
 
 	low, high := 1, maxTTL
 	found := -1
@@ -237,8 +258,8 @@ func probeMinimumReachableTTL(
 		}
 	}
 
-	if found != -1 && ttlCache != nil && cacheTTL != 0 && cacheTTL != unsetInt {
-		ttlCache.AddWithLifetime(ip, found, cacheTTL)
+	if found != -1 && cache != nil && cacheTTL != 0 && cacheTTL != unsetInt {
+		cache.AddWithLifetime(ip, found, cacheTTL)
 	}
 	return found, nil
 }

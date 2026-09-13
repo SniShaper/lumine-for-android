@@ -43,10 +43,11 @@ func closeLogFileLocked() {
 }
 
 func ensureLogDirLocked() (string, error) {
-	if workingDir == "" {
+	dir := getWorkingDir()
+	if dir == "" {
 		return "", fmt.Errorf("working directory not set")
 	}
-	dir := filepath.Join(workingDir, "logs")
+	dir = filepath.Join(dir, "logs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

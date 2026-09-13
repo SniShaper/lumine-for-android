@@ -357,6 +357,20 @@ private fun AddSubscriptionDialog(
                     enabled = !isBusy
                 )
 
+                // K7: warn about cleartext http:// subscription URLs (D4)
+                val isCleartext = url.trimStart().startsWith("http://", ignoreCase = true)
+                AnimatedVisibility(
+                    visible = isCleartext,
+                    enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(180)),
+                    exit = fadeOut(animationSpec = tween(180)) + shrinkVertically(animationSpec = tween(180))
+                ) {
+                    Text(
+                        text = "⚠ 此 URL 使用明文 HTTP 传输，内容可被中间人查看或篡改。建议改用 HTTPS 订阅。",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
                 AnimatedVisibility(
                     visible = importState.stage != SubscriptionImportStage.Idle,
                     enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(180)),

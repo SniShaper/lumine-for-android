@@ -57,8 +57,13 @@ func (ss *Shadowsocks) DialContext(ctx context.Context, metadata *M.Metadata) (c
 	case "tls":
 		c = obfs.NewTLSObfs(c, ss.obfsHost)
 	case "http":
-		_, port, _ := net.SplitHostPort(ss.addr)
-		c = obfs.NewHTTPObfs(c, ss.obfsHost, port)
+		_, port, err := net.SplitHostPort(ss.addr)
+		if err != nil {
+			return nil, fmt.Errorf("split host port %s: %w", ss.addr, err)
+		}
+		if c, err = obfs.NewHTTPObfs(c, ss.obfsHost, port); err != nil {
+			return nil, err
+		}
 	}
 
 	c = ss.cipher.StreamConn(c)
@@ -74,6 +79,7 @@ func (ss *Shadowsocks) DialUDP(*M.Metadata) (net.PacketConn, error) {
 
 	udpAddr, err := net.ResolveUDPAddr("udp", ss.Addr())
 	if err != nil {
+		pc.Close()
 		return nil, fmt.Errorf("resolve udp address %s: %w", ss.Addr(), err)
 	}
 

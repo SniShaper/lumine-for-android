@@ -28,8 +28,11 @@ func resolveBootstrapHost(host string) (string, error) {
 		return host, nil
 	}
 
-	if dnsCache != nil {
-		if ip, ok := dnsCache.Get(host); ok {
+	runtimeStateMu.RLock()
+	cache := dnsCache
+	runtimeStateMu.RUnlock()
+	if cache != nil {
+		if ip, ok := cache.Get(host); ok {
 			return ip, nil
 		}
 	}
@@ -46,8 +49,8 @@ func resolveBootstrapHost(host string) (string, error) {
 		return "", E.New("bootstrap resolve " + host + ": no address found")
 	}
 
-	if dnsCache != nil {
-		dnsCache.AddWithLifetime(host, ip, reverseMappingTTL)
+	if cache != nil {
+		cache.AddWithLifetime(host, ip, reverseMappingTTL)
 	}
 	return ip, nil
 }

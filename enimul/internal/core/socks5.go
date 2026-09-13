@@ -182,6 +182,7 @@ func socks5Handler(cliConn net.Conn, id uint32) {
 		domainBytes, err := readN(cliConn, buf[:lenByte[0]])
 		if err != nil {
 			logger.Error("Read domain address: ", err)
+			return
 		}
 		originHost = string(domainBytes)
 	default:
@@ -226,6 +227,10 @@ func socks5Handler(cliConn net.Conn, id uint32) {
 		}
 	}
 	if !sendReply(logger, cliConn, socks5ReplySuccess) {
+		// 回复写出失败：客户端已不可达，已拨号的上游连接需在此关闭。
+		if dstConn != nil {
+			dstConn.Close()
+		}
 		return
 	}
 

@@ -50,9 +50,11 @@ type IPPool struct {
 	totalWeight int
 	curValidIPs uint32
 
-	scanMu  sync.Mutex
-	sem     chan struct{}
-	counter uint32
+	scanMu   sync.Mutex
+	sem      chan struct{}
+	counter  uint32
+	stopCh   chan struct{}
+	stopOnce sync.Once
 }
 
 func (p *IPPool) UnmarshalJSON(b []byte) error {
@@ -185,6 +187,7 @@ func parseIPList(sources []string) ([]string, error) {
 
 func (p *IPPool) Init(logger log.Logger) {
 	p.logger = logger
+	p.stopCh = make(chan struct{})
 	if p.waitScanOnStartUp {
 		p.scan()
 		go p.monitor()
@@ -194,6 +197,15 @@ func (p *IPPool) Init(logger log.Logger) {
 			p.monitor()
 		}()
 	}
+}
+
+// Stop 终止本池的周期扫描 monitor。可安全重复调用（sync.Once）。
+func (p *IPPool) Stop() {
+	p.stopOnce.Do(func() {
+		if p.stopCh != nil {
+			close(p.stopCh)
+		}
+	})
 }
 
 type ipResult struct {
@@ -312,8 +324,15 @@ func (p *IPPool) updateBest(results []ipResult) {
 }
 
 func (p *IPPool) monitor() {
-	for range time.Tick(p.updateInterval) {
-		p.scan()
+	ticker := time.NewTicker(p.updateInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			p.scan()
+		case <-p.stopCh:
+			return
+		}
 	}
 }
 
@@ -339,6 +358,14 @@ func (p *IPPool) Get() string {
 		}
 	}
 	return p.fallbackIP
+}
+
+// StopIPPools 停止所有 IP 池的周期扫描 monitor（配置重载前与 StopLumine 时调用），
+// 避免每次加载配置叠加新的 monitor goroutine。
+func StopIPPools() {
+	for _, pool := range ipPools {
+		pool.Stop()
+	}
 }
 
 func getFromIPPool(tag string) (ipStr string, err error) {

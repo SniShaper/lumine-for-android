@@ -10,15 +10,7 @@ import (
 var DefaultManager *Manager
 
 func init() {
-	DefaultManager = &Manager{
-		uploadTemp:    atomic.NewInt64(0),
-		downloadTemp:  atomic.NewInt64(0),
-		uploadBlip:    atomic.NewInt64(0),
-		downloadBlip:  atomic.NewInt64(0),
-		uploadTotal:   atomic.NewInt64(0),
-		downloadTotal: atomic.NewInt64(0),
-	}
-	go DefaultManager.handle()
+	DefaultManager = NewManager()
 }
 
 type Manager struct {
@@ -29,6 +21,34 @@ type Manager struct {
 	downloadBlip  *atomic.Int64
 	uploadTotal   *atomic.Int64
 	downloadTotal *atomic.Int64
+	done          chan struct{}
+	closeOnce     sync.Once
+}
+
+// NewManager returns a fully initialized Manager with its one-second
+// statistics loop running. A zero-value Manager panics on the first
+// statistic push (nil atomic pointers), so always use this constructor.
+func NewManager() *Manager {
+	m := &Manager{
+		uploadTemp:    atomic.NewInt64(0),
+		downloadTemp:  atomic.NewInt64(0),
+		uploadBlip:    atomic.NewInt64(0),
+		downloadBlip:  atomic.NewInt64(0),
+		uploadTotal:   atomic.NewInt64(0),
+		downloadTotal: atomic.NewInt64(0),
+		done:          make(chan struct{}),
+	}
+	go m.handle()
+	return m
+}
+
+// Close stops the internal statistics ticker. It is safe to call
+// multiple times. Statistics methods remain usable afterwards; only the
+// per-second blip refresh stops.
+func (m *Manager) Close() {
+	m.closeOnce.Do(func() {
+		close(m.done)
+	})
 }
 
 func (m *Manager) Join(c tracker) {
@@ -78,12 +98,18 @@ func (m *Manager) ResetStatistic() {
 
 func (m *Manager) handle() {
 	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 
-	for range ticker.C {
-		m.uploadBlip.Store(m.uploadTemp.Load())
-		m.uploadTemp.Store(0)
-		m.downloadBlip.Store(m.downloadTemp.Load())
-		m.downloadTemp.Store(0)
+	for {
+		select {
+		case <-ticker.C:
+			m.uploadBlip.Store(m.uploadTemp.Load())
+			m.uploadTemp.Store(0)
+			m.downloadBlip.Store(m.downloadTemp.Load())
+			m.downloadTemp.Store(0)
+		case <-m.done:
+			return
+		}
 	}
 }
 

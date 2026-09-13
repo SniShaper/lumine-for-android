@@ -294,6 +294,10 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 		if *tmp.NumSegments == 0 {
 			return E.New("num_segs cannot be 0")
 		}
+		// -1 is the documented "records only" sentinel; anything lower is invalid.
+		if *tmp.NumSegments < -1 {
+			return E.New("num_segs cannot be less than -1")
+		}
 		p.NumSegments = *tmp.NumSegments
 	}
 

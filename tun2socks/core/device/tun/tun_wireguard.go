@@ -54,6 +54,13 @@ func Open(name string, mtu uint32) (_ device.Device, err error) {
 	}
 	t.nt = nt.(*tun.NativeTun)
 
+	// 失败路径统一关闭已创建的 TUN 设备句柄，避免泄漏。
+	defer func() {
+		if err != nil {
+			_ = nt.Close()
+		}
+	}()
+
 	tunMTU, err := nt.MTU()
 	if err != nil {
 		return nil, fmt.Errorf("get mtu: %w", err)

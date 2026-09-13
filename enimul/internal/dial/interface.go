@@ -111,7 +111,7 @@ func (ifaces networkInterfaces) autoSelect(preferredPrefix netip.Prefix) (*netwo
 	return nil, false
 }
 
-func (ifaces networkInterfaces) manualSelect() *networkInterface {
+func (ifaces networkInterfaces) manualSelect() (*networkInterface, error) {
 	fmt.Println("Avalable Interfaces:")
 	for i, iface := range ifaces {
 		msg := F.Concat("[", i, "] ", iface.name)
@@ -133,13 +133,14 @@ func (ifaces networkInterfaces) manualSelect() *networkInterface {
 		var i int
 		_, err := fmt.Scanln(&i)
 		if err != nil {
-			fmt.Println(err)
+			// stdin 不可用/扫描失败（如非交互环境）时不能静默回退到 0 号接口。
+			return nil, E.WithStr("read interface index from stdin", err)
 		}
 		if i < 0 || i >= len(ifaces) {
 			fmt.Println("Invalid index")
 			continue
 		}
 		fmt.Println()
-		return &ifaces[i]
+		return &ifaces[i], nil
 	}
 }

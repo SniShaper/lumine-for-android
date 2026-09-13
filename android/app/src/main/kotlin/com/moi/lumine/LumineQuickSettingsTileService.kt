@@ -1,5 +1,6 @@
 package com.moi.lumine
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
@@ -84,7 +85,7 @@ class LumineQuickSettingsTileService : TileService() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(LumineVpnService.EXTRA_REQUEST_VPN_PERMISSION, true)
             }
-            startActivityAndCollapse(authorize)
+            startActivityAndCollapseCompat(authorize)
             return
         }
 
@@ -99,7 +100,7 @@ class LumineQuickSettingsTileService : TileService() {
             }
         }
         if (started.isFailure) {
-            startActivityAndCollapse(
+            startActivityAndCollapseCompat(
                 Intent(context, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
@@ -133,5 +134,17 @@ class LumineQuickSettingsTileService : TileService() {
     companion object {
         private const val REFRESH_INTERVAL_MS = 800L
         private const val MIN_ACTION_INTERVAL_MS = 500L
+    }
+
+    @Suppress("DEPRECATION")
+    private fun startActivityAndCollapseCompat(intent: Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val pi = PendingIntent.getActivity(
+                this, 0, intent, PendingIntent.FLAG_IMMUTABLE
+            )
+            startActivityAndCollapse(pi)
+        } else {
+            startActivityAndCollapse(intent)
+        }
     }
 }

@@ -634,6 +634,7 @@ class LumineVpnService : VpnService() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun buildNotification(contentText: String): Notification {
         createNotificationChannel()
 

@@ -28,7 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -145,7 +145,7 @@ fun EvolutionScreen(navController: NavController, viewModel: ConfigViewModel) {
         }
     ) { inner ->
         Column(modifier = Modifier.fillMaxSize().padding(inner)) {
-            TabRow(selectedTabIndex = tab) {
+            PrimaryTabRow(selectedTabIndex = tab) {
                 listOf("测试", "规则", "结果").forEachIndexed { i, label ->
                     Tab(
                         selected = tab == i,

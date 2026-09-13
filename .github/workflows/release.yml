@@ -88,9 +88,7 @@ jobs:
       - name: Cache gomobile toolchain
         uses: actions/cache@v4
         with:
-          path: |
-            ~/gomobile-bin
-            ~/.cache/gomobile
+          path: ~/go/bin
           key: gomobile-${{ runner.os }}-go-${{ hashFiles('enimul/go.mod') }}-v1
 
       - name: Prepare Go mobile toolchain
@@ -101,13 +99,11 @@ jobs:
           GOBIN="$(go env GOPATH)/bin"
           echo "$GOBIN" >> "$GITHUB_PATH"
           export PATH="$GOBIN:$PATH"
-          if ! command -v gomobile &>/dev/null || [[ "$(gomobile version 2>/dev/null)" != *"v0.0.0"* ]]; then
+          if ! command -v gomobile &>/dev/null; then
             go install golang.org/x/mobile/cmd/gomobile@latest
           fi
-          if [[ ! -f ~/.cache/gomobile/.initialized ]]; then
+          if ! command -v gobind &>/dev/null; then
             gomobile init
-            mkdir -p ~/.cache/gomobile
-            touch ~/.cache/gomobile/.initialized
           fi
 
       - name: Download Go dependencies

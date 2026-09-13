@@ -19,6 +19,7 @@ Thumbs.db
 *.jks
 *.keystore
 *.p12
+*.pem
 !android/gradle/wrapper/gradle-wrapper.jar
 
 # Test binary, built with `go test -c`

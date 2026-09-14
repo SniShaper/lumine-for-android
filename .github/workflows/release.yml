@@ -80,7 +80,6 @@ jobs:
           yes | sdkmanager --licenses >/dev/null
           set -o pipefail
           sdkmanager \
-            "platform-tools" \
             "platforms;android-${ANDROID_API_LEVEL}" \
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
@@ -99,6 +98,9 @@ jobs:
           path: |
             ~/go/pkg/gomobile
             ~/go/pkg/android_arm64
+            ~/go/pkg/android_arm
+            ~/go/pkg/android_386
+            ~/go/pkg/android_amd64
           key: gomobile-${{ hashFiles('enimul/go.sum', 'tun2socks/go.sum') }}-v1
           restore-keys: |
             gomobile-
@@ -146,7 +148,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --parallel assembleRelease
+          ./gradlew --parallel assembleRelease
 
       - name: Publish GitHub release
         shell: bash

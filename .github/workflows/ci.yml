@@ -68,7 +68,6 @@ jobs:
           yes | sdkmanager --licenses >/dev/null
           set -o pipefail
           sdkmanager \
-            "platform-tools" \
             "platforms;android-${ANDROID_API_LEVEL}" \
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
@@ -111,10 +110,10 @@ jobs:
           # Run vet in background — it doesn't depend on AAR
           (cd ../tun2socks && go vet ./...) &
 
-          # Build AAR in foreground
+          # Build AAR — only arm64 for CI debug (4x faster than all ABIs)
           mkdir -p ../android/app/libs
           gomobile bind \
-            -target=android \
+            -target=android/arm64 \
             -androidapi "${GOMOBILE_ANDROID_API}" \
             -o ../android/app/libs/LumineCore.aar \
             -ldflags="-s -w -buildid=" -trimpath \
@@ -130,7 +129,7 @@ jobs:
           ABI_FILTER: arm64-v8a
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --parallel assembleDebug
+          ./gradlew --parallel assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7

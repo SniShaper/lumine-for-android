@@ -129,7 +129,7 @@ jobs:
           ABI_FILTER: arm64-v8a
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug -x test -x androidTest
+          ./gradlew assembleDebug -x test -x connectedAndroidTest
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7

@@ -148,7 +148,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease -x test -x androidTest
+          ./gradlew assembleRelease -x test -x connectedAndroidTest
 
       - name: Publish GitHub release
         shell: bash

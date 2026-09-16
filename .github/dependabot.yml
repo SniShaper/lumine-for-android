@@ -35,6 +35,9 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "gradle-wrapper"
+        versions: [">=9.6"]
     groups:
       gradle-deps:
         patterns:

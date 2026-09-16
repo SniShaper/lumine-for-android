@@ -19,7 +19,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      ANDROID_API_LEVEL: '36'
+      ANDROID_API_LEVEL: '37'
       GOMOBILE_ANDROID_API: '24'
       ANDROID_BUILD_TOOLS: '36.0.0'
       ANDROID_NDK_VERSION: '30.0.14904198'
@@ -82,7 +82,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null
           set -o pipefail
           sdkmanager \
-            "platforms;android-${ANDROID_API_LEVEL}" \
+            "platforms;android-37.2" \
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 

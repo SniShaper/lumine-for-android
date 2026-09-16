@@ -26,7 +26,8 @@ def hasReleaseSigning = releaseKeystorePath != null &&
 
 android {
     namespace 'com.moi.lumine'
-    compileSdk 36
+    compileSdk = 37
+    compileSdkMinor = 2
 
     splits {
         abi {

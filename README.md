@@ -134,7 +134,7 @@ make android
 ## Continuous Integration
 
 - **`ci.yml`** — runs on pushes to `main` and on pull requests. It probes Maven repository latency and injects the fastest dependency resolution order, sets up Go + Android SDK + NDK, rebuilds `LumineCore.aar` with gomobile, and builds the debug APK as a workflow artifact.
-- **`release.yml`** — manual dispatch with a version input (for example `v0.9.2`); `versionName` and `versionCode` are injected into the build automatically (`versionCode` defaults to `major*10000 + minor*100 + patch`, and a release is refused when it would not increase the code). It signs and builds the four ABI release APKs, publishes them as `lumine-<version>-app-<abi>-release.apk`, and creates the GitHub Release whose body combines the generated changelog with a full commit list and a contributor summary.
+- **`release.yml`** — manual dispatch with a version input (for example `v0.9.2`). The workflow writes the version into `android/app/build.gradle` as literals (F-Droid reads them by static analysis), commits that bump, tags the commit, builds and signs the four ABI release APKs as `lumine-<version>-app-<abi>-release.apk`, and creates the GitHub Release. `versionCode` defaults to `major*10000 + minor*100 + patch`, and publishing is refused when it would not increase the code.
 - **`dependabot-auto-merge.yml`** — auto-merges Dependabot pull requests once checks pass.
 
 ---

@@ -196,6 +196,35 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "Resolved $tag: versionName=$name versionCode=$code (latest tag: ${latest_tag:-none})"
 
+      - name: Commit release version bump
+        id: bump
+        shell: bash
+        env:
+          RELEASE_NAME: ${{ steps.version-info.outputs.name }}
+          RELEASE_CODE: ${{ steps.version-info.outputs.code }}
+        run: |
+          sed -i -E "s/^([[:space:]]*)versionCode[[:space:]]+[0-9]+$/\1versionCode ${RELEASE_CODE}/" android/app/build.gradle
+          sed -i -E "s/^([[:space:]]*)versionName[[:space:]]+\"[0-9.]+\"$/\1versionName \"${RELEASE_NAME}\"/" android/app/build.gradle
+          grep -nE "versionCode|versionName" android/app/build.gradle | head -4
+
+          if ! grep -qE "versionCode ${RELEASE_CODE}$" android/app/build.gradle; then
+            echo "Failed to inject versionCode into android/app/build.gradle"
+            exit 1
+          fi
+
+          if git diff --quiet; then
+            echo "No version change needed"
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/build.gradle
+          git commit -m "chore(release): v${RELEASE_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Build release APKs
         shell: bash
         working-directory: android
@@ -204,8 +233,6 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          VERSION_NAME: ${{ steps.version-info.outputs.name }}
-          VERSION_CODE: ${{ steps.version-info.outputs.code }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease -x test -x connectedAndroidTest
@@ -215,6 +242,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version-info.outputs.tag }}
+          RELEASE_SHA: ${{ steps.bump.outputs.sha }}
         run: |
           tag="$VERSION"
           title="$VERSION"
@@ -266,6 +294,6 @@ jobs:
             gh release create "$tag" release-assets/* \
               --title "$title" \
               --notes-file "$body_file" \
-              --target "$GITHUB_SHA"
+              --target "$RELEASE_SHA"
           fi
           rm -f "$body_file"

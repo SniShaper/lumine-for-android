@@ -7,6 +7,10 @@ on:
         description: 'Release version (e.g. v1.0.0)'
         required: true
         type: string
+      version_code:
+        description: 'Optional version code override (defaults to major*10000 + minor*100 + patch)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -147,6 +151,51 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
 
+      - name: Resolve release version
+        id: version-info
+        shell: bash
+        env:
+          RAW_VERSION: ${{ inputs.version }}
+          RAW_VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          name="${RAW_VERSION#v}"
+          if [[ ! "$name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must look like v1.2.3 or 1.2.3, got: $RAW_VERSION"
+            exit 1
+          fi
+
+          IFS='.' read -r major minor patch <<< "$name"
+
+          if [[ -n "$RAW_VERSION_CODE" ]]; then
+            code="$RAW_VERSION_CODE"
+          else
+            code=$(( major * 10000 + minor * 100 + patch ))
+          fi
+
+          if [[ ! "$code" =~ ^[0-9]+$ ]] || (( code < 1 )); then
+            echo "Invalid version code: $code"
+            exit 1
+          fi
+
+          tag="v$name"
+          latest_tag="$(git tag --sort=-v:refname | head -1 || true)"
+          if [[ -n "$latest_tag" ]]; then
+            latest_name="${latest_tag#v}"
+            if [[ "$latest_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              IFS='.' read -r latest_major latest_minor latest_patch <<< "$latest_name"
+              latest_code=$(( latest_major * 10000 + latest_minor * 100 + latest_patch ))
+              if (( code <= latest_code )); then
+                echo "Refusing to publish: version code $code from $name is not greater than $latest_code from $latest_tag"
+                exit 1
+              fi
+            fi
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Resolved $tag: versionName=$name versionCode=$code (latest tag: ${latest_tag:-none})"
+
       - name: Build release APKs
         shell: bash
         working-directory: android
@@ -155,6 +204,8 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION_NAME: ${{ steps.version-info.outputs.name }}
+          VERSION_CODE: ${{ steps.version-info.outputs.code }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease -x test -x connectedAndroidTest
@@ -163,7 +214,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.version-info.outputs.tag }}
         run: |
           tag="$VERSION"
           title="$VERSION"

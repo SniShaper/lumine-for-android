@@ -24,6 +24,9 @@ def hasReleaseSigning = releaseKeystorePath != null &&
         releaseKeyAlias != null &&
         releaseKeyPassword != null
 
+def appVersionName = envOrProp('VERSION_NAME') ?: envOrProp('versionName') ?: '0.9.2'
+def appVersionCode = (envOrProp('VERSION_CODE') ?: envOrProp('versionCode') ?: '902').toInteger()
+
 android {
     namespace = 'com.moi.lumine'
     compileSdk = 37
@@ -62,8 +65,8 @@ android {
         applicationId "com.moi.lumine"
         minSdk 24
         targetSdk 36
-        versionCode 92
-        versionName "0.9.2"
+        versionCode appVersionCode
+        versionName appVersionName
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }

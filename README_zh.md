@@ -132,7 +132,7 @@ make android
 ## 持续集成
 
 - **`ci.yml`**：在 `main` 推送与 PR 时运行。流程会探测各 Maven 仓库的连接时延并按最快顺序注入依赖解析、准备 Go + Android SDK + NDK、用 gomobile 重建 `LumineCore.aar`，最后构建 debug APK 作为工作流产物。
-- **`release.yml`**：手动触发并填写版本号（如 `v0.9.2`）。使用仓库密钥完成签名，构建四个 ABI 的 release APK，重命名为 `lumine-<版本>-app-<abi>-release.apk` 后创建 GitHub Release；Release 说明由自动变更摘要、完整 Commit 列表与贡献者统计三部分组成。
+- **`release.yml`**：手动触发并填写版本号（如 `v0.9.2`），`versionName` 与 `versionCode` 由 CI 自动注入构建（`versionCode` 默认取 `主版本*10000 + 次版本*100 + 修订号`，若不能大于上一版本号则拒绝发布）。使用仓库密钥完成签名，构建四个 ABI 的 release APK，重命名为 `lumine-<版本>-app-<abi>-release.apk` 后创建 GitHub Release；Release 说明由自动变更摘要、完整 Commit 列表与贡献者统计三部分组成。
 - **`dependabot-auto-merge.yml`**：Dependabot 的 PR 在检查通过后自动合并。
 
 ---

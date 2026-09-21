@@ -212,7 +212,7 @@ jobs:
             exit 1
           fi
 
-          if git diff --quiet; then
+          if git diff --quiet -- android/app/build.gradle; then
             echo "No version change needed"
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0

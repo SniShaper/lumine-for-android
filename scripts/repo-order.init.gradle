@@ -1,0 +1,34 @@
+def probeFile = new File(gradle.gradleUserHomeDir, 'repo-order.properties')
+if (!probeFile.isFile()) {
+    return
+}
+
+def probe = new Properties()
+probeFile.withInputStream { probe.load(it) }
+
+def order = (probe.getProperty('order', '') ?: '').split(',').collect { it.trim() }.findAll { it }
+if (!order) {
+    return
+}
+
+def applyOrder = { handler, boolean withPluginPortal ->
+    handler.clear()
+    if (withPluginPortal) {
+        handler.gradlePluginPortal()
+    }
+    order.each { entry ->
+        if (entry == 'google') {
+            handler.google()
+        } else if (entry == 'mavenCentral') {
+            handler.mavenCentral()
+        } else {
+            handler.maven { url = entry }
+        }
+    }
+}
+
+settingsEvaluated { settings ->
+    applyOrder(settings.pluginManagement.repositories, true)
+    applyOrder(settings.dependencyResolutionManagement.repositories, false)
+    logger.lifecycle("[repo-order] ${order.join(' -> ')}")
+}

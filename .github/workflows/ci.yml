@@ -74,6 +74,13 @@ jobs:
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
 
+      - name: Probe Maven repository latency
+        shell: bash
+        run: |
+          bash scripts/probe-repos.sh
+          mkdir -p ~/.gradle/init.d
+          cp scripts/repo-order.init.gradle ~/.gradle/init.d/
+
       - name: Cache Gradle build-cache
         uses: actions/cache@v6
         with:

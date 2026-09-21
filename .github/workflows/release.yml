@@ -231,35 +231,41 @@ jobs:
             cp "$release_apk" "release-assets/lumine-${tag}-${base_name}"
           done
 
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" release-assets/* --clobber
-          else
-            gh release create "$tag" release-assets/* \
-              --title "$title" \
-              --generate-notes \
-              --target "$GITHUB_SHA"
-          fi
-
           previous_tag="$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
           if [[ "$previous_tag" == "$tag" ]]; then
             previous_tag="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
           fi
           range="${previous_tag:+${previous_tag}..}HEAD"
 
-          notes_file="$(mktemp)"
-          gh release view "$tag" --json body -q .body > "$notes_file"
-
+          body_file="$(mktemp)"
           {
+            echo "## What's Changed"
             echo
-            echo "## Commits"
-            echo
-            git log --no-merges --pretty='- %s (`%h`) - %an' $range || true
+            while IFS=$'\t' read -r sha subject; do
+              login="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq '.author.login // empty' 2>/dev/null || true)"
+              pr_url="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/pulls" --jq '.[0].html_url // empty' 2>/dev/null || true)"
+              if [[ -z "$pr_url" ]]; then
+                pr_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${sha}"
+              fi
+              if [[ -z "$login" ]]; then
+                login="$(git show -s --pretty='%an' "$sha")"
+              fi
+              printf '* %s by @%s in %s\n' "$subject" "$login" "$pr_url"
+            done < <(git log --no-merges --reverse --pretty='%H%x09%s' $range)
             echo
             echo "## Contributors"
             echo
             git log --no-merges --pretty='%an' $range | sort | uniq -c | sort -rn |
-              awk '{ count = $1; $1 = ""; sub(/^ /, ""); printf "- %s (%d commits)\n", $0, count }' || true
-          } >> "$notes_file"
+              awk '{ count = $1; $1 = ""; sub(/^ /, ""); printf "- %s (%d commits)\n", $0, count }'
+          } > "$body_file" || true
 
-          gh release edit "$tag" --notes-file "$notes_file"
-          rm -f "$notes_file"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+            gh release edit "$tag" --notes-file "$body_file"
+          else
+            gh release create "$tag" release-assets/* \
+              --title "$title" \
+              --notes-file "$body_file" \
+              --target "$GITHUB_SHA"
+          fi
+          rm -f "$body_file"

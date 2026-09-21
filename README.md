@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat&logo=android&logoColor=white)](https://developer.android.com/) [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat&logo=open-source-initiative)](LICENSE) [![GitHub Release](https://img.shields.io/github/v/release/SniShaper/lumine-for-android?style=flat&logo=github&label=Release)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub Downloads](https://img.shields.io/github/downloads/SniShaper/lumine-for-android/total?style=flat&logo=github&label=Downloads)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat&logo=git&label=Last%20commit)](https://github.com/SniShaper/lumine-for-android/commits/main) [![CI](https://img.shields.io/github/actions/workflow/status/SniShaper/lumine-for-android/android-release.yml?style=flat&logo=githubactions&label=CI)](https://github.com/SniShaper/lumine-for-android/actions)
+[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat&logo=android&logoColor=white)](https://developer.android.com/) [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat&logo=open-source-initiative)](LICENSE) [![GitHub Release](https://img.shields.io/github/v/release/SniShaper/lumine-for-android?style=flat&logo=github&label=Release)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub Downloads](https://img.shields.io/github/downloads/SniShaper/lumine-for-android/total?style=flat&logo=github&label=Downloads)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat&logo=git&label=Last%20commit)](https://github.com/SniShaper/lumine-for-android/commits/main) [![CI](https://img.shields.io/github/actions/workflow/status/SniShaper/lumine-for-android/ci.yml?style=flat&logo=githubactions&label=CI)](https://github.com/SniShaper/lumine-for-android/actions)
 
 **Lumine** is a Clash-style local proxy / VPN client for Android built on the [enimul](https://github.com/lzpls/enimul) Go core (formerly [lumine](https://codeberg.org/PonyCW26/lumine)). It runs as an Android `VPNService` (TUN) tunnel and forwards traffic locally with configurable splitting rules.
 
@@ -124,8 +124,8 @@ make android
 
 ### Development environment
 
-- JDK 17+ (CI uses Temurin 21)
-- Android SDK: `compileSdk 36`, `targetSdk 36`, `minSdk 24` (Android 7.0+)
+- JDK 26 (CI uses Temurin 26)
+- Android SDK: `compileSdk 37.2`, `targetSdk 36`, `minSdk 24` (Android 7.0+)
 - Android NDK (release CI pins `30.0.14904198`) and Build Tools `36.0.0`
 - Go toolchain (version pinned by `enimul/go.mod`, currently Go 1.26) + `golang.org/x/mobile/cmd/gomobile`
 
@@ -133,8 +133,9 @@ make android
 
 ## Continuous Integration
 
-- **`android-release.yml`** — triggered on pushes to `main` / version tags and manual dispatch. It sets up Go + Android SDK + NDK, rebuilds `LumineCore.aar` with gomobile, runs `assembleRelease`, uploads the four ABI APKs as workflow artifacts, and on tag pushes creates / updates a GitHub Release with assets renamed as `lumine-<tag>-app-<abi>-release.apk`.
-- **`fastlane.yml`** — validates the `fastlane/` supply metadata on push / PR touching it.
+- **`ci.yml`** — runs on pushes to `main` and on pull requests. It probes Maven repository latency and injects the fastest dependency resolution order, sets up Go + Android SDK + NDK, rebuilds `LumineCore.aar` with gomobile, and builds the debug APK as a workflow artifact.
+- **`release.yml`** — manual dispatch with a version input (for example `v0.9.2`). It signs and builds the four ABI release APKs, publishes them as `lumine-<version>-app-<abi>-release.apk`, and creates the GitHub Release whose body combines the generated changelog with a full commit list and a contributor summary.
+- **`dependabot-auto-merge.yml`** — auto-merges Dependabot pull requests once checks pass.
 
 ---
 

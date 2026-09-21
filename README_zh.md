@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README_zh.md)
 
-[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat&logo=android&logoColor=white)](https://developer.android.com/) [![许可证](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat&logo=open-source-initiative&label=许可证)](LICENSE) [![GitHub Release](https://img.shields.io/github/v/release/SniShaper/lumine-for-android?style=flat&logo=github&label=版本)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub Downloads](https://img.shields.io/github/downloads/SniShaper/lumine-for-android/total?style=flat&logo=github&label=下载量)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat&logo=git&label=最后提交)](https://github.com/SniShaper/lumine-for-android/commits/main) [![持续集成](https://img.shields.io/github/actions/workflow/status/SniShaper/lumine-for-android/android-release.yml?style=flat&logo=githubactions&label=CI)](https://github.com/SniShaper/lumine-for-android/actions)
+[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat&logo=android&logoColor=white)](https://developer.android.com/) [![许可证](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat&logo=open-source-initiative&label=许可证)](LICENSE) [![GitHub Release](https://img.shields.io/github/v/release/SniShaper/lumine-for-android?style=flat&logo=github&label=版本)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub Downloads](https://img.shields.io/github/downloads/SniShaper/lumine-for-android/total?style=flat&logo=github&label=下载量)](https://github.com/SniShaper/lumine-for-android/releases) [![GitHub last commit](https://img.shields.io/github/last-commit/SniShaper/lumine-for-android?style=flat&logo=git&label=最后提交)](https://github.com/SniShaper/lumine-for-android/commits/main) [![持续集成](https://img.shields.io/github/actions/workflow/status/SniShaper/lumine-for-android/ci.yml?style=flat&logo=githubactions&label=CI)](https://github.com/SniShaper/lumine-for-android/actions)
 
 **Lumine** 是基于 [enimul](https://github.com/lzpls/enimul) Go 核心（前 [lumine](https://codeberg.org/PonyCW26/lumine)）的 Android 端 Clash 风格本地代理 / VPN 客户端。它通过 Android `VPNService`（TUN）隧道接管设备流量，并按配置规则在本地完成转发与分流。
 
@@ -122,8 +122,8 @@ make android
 
 ### 开发环境
 
-- JDK 17+（CI 使用 Temurin 21）
-- Android SDK：`compileSdk 36`、`targetSdk 36`、`minSdk 24`（Android 7.0+）
+- JDK 26（CI 使用 Temurin 26）
+- Android SDK：`compileSdk 37.2`、`targetSdk 36`、`minSdk 24`（Android 7.0+）
 - Android NDK（发布 CI 固定 `30.0.14904198`）与 Build Tools `36.0.0`
 - Go 工具链（版本以 `enimul/go.mod` 为准，当前 Go 1.26）+ `golang.org/x/mobile/cmd/gomobile`
 
@@ -131,8 +131,9 @@ make android
 
 ## 持续集成
 
-- **`android-release.yml`**：在 `main` 分支推送、版本 tag 推送或手动触发时运行。流程会准备 Go + Android SDK + NDK，用 gomobile 重建 `LumineCore.aar`，执行 `assembleRelease`，上传四个 ABI 的 APK 作为工作流产物；tag 推送时创建或更新 GitHub Release，资产重命名为 `lumine-<tag>-app-<abi>-release.apk`。
-- **`fastlane.yml`**：对 `fastlane/` 商店元数据做格式校验（push / PR 触碰时触发）。
+- **`ci.yml`**：在 `main` 推送与 PR 时运行。流程会探测各 Maven 仓库的连接时延并按最快顺序注入依赖解析、准备 Go + Android SDK + NDK、用 gomobile 重建 `LumineCore.aar`，最后构建 debug APK 作为工作流产物。
+- **`release.yml`**：手动触发并填写版本号（如 `v0.9.2`）。使用仓库密钥完成签名，构建四个 ABI 的 release APK，重命名为 `lumine-<版本>-app-<abi>-release.apk` 后创建 GitHub Release；Release 说明由自动变更摘要、完整 Commit 列表与贡献者统计三部分组成。
+- **`dependabot-auto-merge.yml`**：Dependabot 的 PR 在检查通过后自动合并。
 
 ---
 

@@ -188,3 +188,27 @@ jobs:
               --generate-notes \
               --target "$GITHUB_SHA"
           fi
+
+          previous_tag="$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
+          if [[ "$previous_tag" == "$tag" ]]; then
+            previous_tag="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
+          fi
+          range="${previous_tag:+${previous_tag}..}HEAD"
+
+          notes_file="$(mktemp)"
+          gh release view "$tag" --json body -q .body > "$notes_file"
+
+          {
+            echo
+            echo "## Commits"
+            echo
+            git log --no-merges --pretty='- %s (`%h`) - %an' $range || true
+            echo
+            echo "## Contributors"
+            echo
+            git log --no-merges --pretty='%an' $range | sort | uniq -c | sort -rn |
+              awk '{ count = $1; $1 = ""; sub(/^ /, ""); printf "- %s (%d commits)\n", $0, count }' || true
+          } >> "$notes_file"
+
+          gh release edit "$tag" --notes-file "$notes_file"
+          rm -f "$notes_file"

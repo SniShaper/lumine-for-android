@@ -1,30 +1,46 @@
 pluginManagement {
     repositories {
+        def ci = System.getenv('CI') != null
+        if (ci) {
+            gradlePluginPortal()
+            google()
+            mavenCentral()
+        }
+
         maven { url = 'https://mirrors.tencent.com/nexus/repository/google/' }
         maven { url = 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
         maven { url = 'https://mirrors.cernet.edu.cn/maven/' }
         maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
         maven { url = 'https://mirrors.tuna.tsinghua.edu.cn/maven/' }
 
-        gradlePluginPortal()
-        google()
-        mavenCentral()
+        if (!ci) {
+            gradlePluginPortal()
+            google()
+            mavenCentral()
+        }
     }
 }
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
+        def ci = System.getenv('CI') != null
+        if (ci) {
+            google()
+            mavenCentral()
+        }
+
         maven { url = 'https://mirrors.tencent.com/nexus/repository/google/' }
         maven { url = 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
         maven { url = 'https://mirrors.cernet.edu.cn/maven/' }
         maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
         maven { url = 'https://mirrors.tuna.tsinghua.edu.cn/maven/' }
-
-        google()
-        mavenCentral()
-
         maven { url = 'https://jitpack.io' }
+
+        if (!ci) {
+            google()
+            mavenCentral()
+        }
     }
 }
 

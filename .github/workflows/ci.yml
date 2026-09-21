@@ -78,7 +78,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.gradle/caches/build-cache-1
-          key: gradle-build-cache-${{ hashFiles('android/**/*.gradle', 'android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-build-cache-${{ hashFiles('android/gradle.properties', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-build-cache-
 

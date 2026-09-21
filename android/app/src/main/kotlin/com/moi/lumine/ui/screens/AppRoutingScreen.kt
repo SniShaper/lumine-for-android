@@ -63,7 +63,7 @@ private fun loadLaunchableApps(context: Context): List<RoutingAppInfo> {
             .mapNotNull { info ->
                 val pkg = info.activityInfo?.packageName ?: return@mapNotNull null
                 if (pkg == selfPackage) return@mapNotNull null
-                val label = info.loadLabel(pm)?.toString()?.takeIf { it.isNotBlank() } ?: pkg
+                val label = info.loadLabel(pm).toString().takeIf { it.isNotBlank() } ?: pkg
                 RoutingAppInfo(label = label, packageName = pkg)
             }
             .distinctBy { it.packageName }

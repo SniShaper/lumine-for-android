@@ -1,11 +1,11 @@
-// android/settings.gradle
 pluginManagement {
     repositories {
-        // 优先使用腾讯云镜像以提高国内 CI/Runner 的依赖可用性
-        maven { url 'https://mirrors.tencent.com/nexus/repository/google/' }
-        maven { url 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
+        maven { url = 'https://mirrors.tencent.com/nexus/repository/google/' }
+        maven { url = 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
+        maven { url = 'https://mirrors.cernet.edu.cn/maven/' }
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
+        maven { url = 'https://mirrors.tuna.tsinghua.edu.cn/maven/' }
 
-        // 保留常用仓库作为后备
         gradlePluginPortal()
         google()
         mavenCentral()
@@ -13,19 +13,18 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    // 让 settings 中的仓库优先生效
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
-        // 优先使用腾讯云镜像
-        maven { url 'https://mirrors.tencent.com/nexus/repository/google/' }
-        maven { url 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
+        maven { url = 'https://mirrors.tencent.com/nexus/repository/google/' }
+        maven { url = 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
+        maven { url = 'https://mirrors.cernet.edu.cn/maven/' }
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
+        maven { url = 'https://mirrors.tuna.tsinghua.edu.cn/maven/' }
 
-        // 官方仓库作为后备
         google()
         mavenCentral()
 
-        // 若项目使用 jitpack，保留它
-        maven { url 'https://jitpack.io' }
+        maven { url = 'https://jitpack.io' }
     }
 }
 

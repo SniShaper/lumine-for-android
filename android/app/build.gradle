@@ -25,13 +25,13 @@ def hasReleaseSigning = releaseKeystorePath != null &&
         releaseKeyPassword != null
 
 android {
-    namespace 'com.moi.lumine'
+    namespace = 'com.moi.lumine'
     compileSdk = 37
     compileSdkMinor = 2
 
     splits {
         abi {
-            enable true
+            enable = true
             reset()
             if (project.hasProperty("ABI_FILTER")) {
                 include(ABI_FILTER)
@@ -43,7 +43,7 @@ android {
                     include 'arm64-v8a'
                 }
             }
-            universalApk false
+            universalApk = false
         }
     }
 
@@ -71,8 +71,8 @@ android {
     buildTypes {
         debug {}
         release {
-            minifyEnabled true
-            shrinkResources true
+            minifyEnabled = true
+            shrinkResources = true
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.release
             }
@@ -84,7 +84,7 @@ android {
         targetCompatibility JavaVersion.VERSION_26
     }
     buildFeatures {
-        compose true
+        compose = true
     }
     packaging {
         resources {
@@ -93,9 +93,9 @@ android {
     }
     dependenciesInfo {
         // Disables dependency metadata when building APKs.
-        includeInApk false
+        includeInApk = false
         // Disables dependency metadata when building Android App Bundles.
-        includeInBundle false
+        includeInBundle = false
     }
 }
 

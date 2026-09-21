@@ -384,7 +384,8 @@ private fun mapNat64ForTest(ip: String, prefix: String): String {
     val out = ByteArray(16)
     System.arraycopy(b, 0, out, 0, 12)
     System.arraycopy(v4, 0, out, 12, 4)
-    return InetAddress.getByAddress(out).hostAddress
+    val mapped: String? = InetAddress.getByAddress(out).hostAddress
+    return mapped ?: ip
 }
 
 private suspend fun nat64Rtt(prefix: String): Long? {

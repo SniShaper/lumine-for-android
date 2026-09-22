@@ -196,12 +196,13 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "Resolved $tag: versionName=$name versionCode=$code (latest tag: ${latest_tag:-none})"
 
-      - name: Commit release version bump
+      - name: Inject and commit release version
         id: bump
         shell: bash
         env:
           RELEASE_NAME: ${{ steps.version-info.outputs.name }}
           RELEASE_CODE: ${{ steps.version-info.outputs.code }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           sed -i -E "s/^([[:space:]]*)versionCode[[:space:]]+[0-9]+$/\1versionCode ${RELEASE_CODE}/" android/app/build.gradle
           sed -i -E "s/^([[:space:]]*)versionName[[:space:]]+\"[0-9.]+\"$/\1versionName \"${RELEASE_NAME}\"/" android/app/build.gradle
@@ -211,9 +212,13 @@ jobs:
             echo "Failed to inject versionCode into android/app/build.gradle"
             exit 1
           fi
+          if ! grep -qE "versionName \"${RELEASE_NAME}\"$" android/app/build.gradle; then
+            echo "Failed to inject versionName into android/app/build.gradle"
+            exit 1
+          fi
 
           if git diff --quiet -- android/app/build.gradle; then
-            echo "No version change needed"
+            echo "Version already matches v${RELEASE_NAME}, no commit needed"
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -222,8 +227,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add android/app/build.gradle
           git commit -m "chore(release): v${RELEASE_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
+
+          head_sha="$(git rev-parse HEAD)"
+          remote_sha="$(git ls-remote origin "refs/heads/${DEFAULT_BRANCH}" | cut -f1)"
+          if [[ "$head_sha" != "$remote_sha" ]]; then
+            echo "Version commit was not pushed to ${DEFAULT_BRANCH} (local ${head_sha}, remote ${remote_sha})"
+            exit 1
+          fi
+          echo "Pushed version commit ${head_sha} to ${DEFAULT_BRANCH}"
+          echo "sha=${head_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Build release APKs
         shell: bash

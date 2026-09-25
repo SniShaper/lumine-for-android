@@ -29,6 +29,7 @@ jobs:
       ANDROID_NDK_VERSION: '30.0.14904198'
       RELEASE_APK_GLOB: android/app/build/outputs/apk/release/*.apk
       HAS_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      RELEASE_BOT_NAME: SnishaperTeam-ReleaseBot
 
     steps:
       - name: Check out source
@@ -223,8 +224,9 @@ jobs:
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "$RELEASE_BOT_NAME"
+          git config user.email "${RELEASE_BOT_NAME}@users.noreply.github.com"
+          echo "::notice::committing as $RELEASE_BOT_NAME"
           git add android/app/build.gradle
           git commit -m "chore(release): v${RELEASE_NAME}"
           git push origin "HEAD:${DEFAULT_BRANCH}"

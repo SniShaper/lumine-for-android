@@ -122,7 +122,6 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
         }
     }
 
-    // 打开应用时自动恢复：带授权请求标记，或保活标记还在但服务已死
     LaunchedEffect(Unit) {
         val shouldAutoRecover = requestVpnPermission ||
             (ConfigRepository(context).shouldVpnBeRunning() && !LumineVpnService.isServiceRunning)
@@ -191,8 +190,6 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
         }
     }
 
-    // 顶层容器不再吞掉系统栏 inset：各子屏 Scaffold 与 Home 各自处理，
-    // 避免嵌套 Scaffold 造成系统栏双重 padding。
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
@@ -234,7 +231,6 @@ fun MainContainer(requestVpnPermission: Boolean = false) {
         }
     }
 }
-
 
 @Composable
 fun TestScreen(onStart: () -> Unit) {

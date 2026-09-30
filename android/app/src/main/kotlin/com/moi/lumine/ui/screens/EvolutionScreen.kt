@@ -102,7 +102,6 @@ fun EvolutionScreen(navController: NavController, viewModel: ConfigViewModel) {
                 if (direct != null) {
                     results += EvoEntry(domain, "直连", direct, true)
                 } else {
-                    // NAT64 映射探测（需真实出口 IPv6 或 v4 映射通道）
                     var mapped: Long? = null
                     if (enableIpv6 && nat64Prefix.isNotBlank()) {
                         mapped = withContext(Dispatchers.IO) { probeNat64(domain, nat64Prefix) }
@@ -114,7 +113,6 @@ fun EvolutionScreen(navController: NavController, viewModel: ConfigViewModel) {
                     }
                 }
             }
-            // 取消发生在最后一轮探测之后时，不能把结果提交覆盖"已停止"状态（K13）
             if (isActive) {
                 progress = list.size
                 entries = results
@@ -166,7 +164,6 @@ fun EvolutionScreen(navController: NavController, viewModel: ConfigViewModel) {
                     total = total,
                     onStart = { startTest() },
                     onStop = {
-                        // 真正取消探测协程，而非仅翻转标志（K13）
                         testJob?.cancel()
                         testJob = null
                         running = false

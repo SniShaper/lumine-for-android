@@ -61,7 +61,6 @@ import kotlinx.coroutines.withContext
 fun DnsScreen(navController: NavController, viewModel: ConfigViewModel) {
     val config by viewModel.currentConfig.collectAsState()
 
-    // 节点 = 主节点(dns.addr) + 备用(dns.resolvers)；全局传输类型决定协议。
     val typeOptions = listOf(
         "https" to "DoH (HTTPS)",
         "quic" to "DoQ (QUIC)",
@@ -369,7 +368,6 @@ private val DNS_PRESETS: List<Pair<String, String>> = listOf(
 
 private fun parseNode(node: String, type: String): Pair<String, Int> {
     val raw = node.trim()
-    // URL 形式: 取 host 并处理 /dns-query 路径
     val host = raw.substringAfter("://").substringBefore("/")
     if (host.contains(":")) {
         val h = host.substringBeforeLast(":")

@@ -199,7 +199,6 @@ func (p *IPPool) Init(logger log.Logger) {
 	}
 }
 
-// Stop 终止本池的周期扫描 monitor。可安全重复调用（sync.Once）。
 func (p *IPPool) Stop() {
 	p.stopOnce.Do(func() {
 		if p.stopCh != nil {
@@ -360,8 +359,6 @@ func (p *IPPool) Get() string {
 	return p.fallbackIP
 }
 
-// StopIPPools 停止所有 IP 池的周期扫描 monitor（配置重载前与 StopLumine 时调用），
-// 避免每次加载配置叠加新的 monitor goroutine。
 func StopIPPools() {
 	for _, pool := range ipPools {
 		pool.Stop()

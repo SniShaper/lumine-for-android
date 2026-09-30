@@ -1,9 +1,9 @@
 pluginManagement {
     repositories {
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/gradle-plugin/' }
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/google/' }
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
         gradlePluginPortal()
-        maven { url = 'https://mirrors.tencent.com/nexus/repository/google/' }
-        maven { url = 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
-
         google()
         mavenCentral()
     }
@@ -12,16 +12,11 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
-        maven { url = 'https://mirrors.tencent.com/nexus/repository/google/' }
-        maven { url = 'https://mirrors.tencent.com/nexus/repository/maven-central/' }
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/google/' }
         maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
-        maven { url = 'https://mirrors.tuna.tsinghua.edu.cn/maven/' }
-        maven { url = 'https://mirrors.cernet.edu.cn/maven/' }
-
+        maven { url = 'https://jitpack.io' }
         google()
         mavenCentral()
-
-        maven { url = 'https://jitpack.io' }
     }
 }
 

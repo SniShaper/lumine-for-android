@@ -56,7 +56,6 @@ func LoadConfig(filePath string) (string, string, error) {
 	}
 	dial.SetLogger(newLogger("[dial]"))
 
-	// 停止旧池的扫描 monitor，避免重载叠加；新配置无池时同样清空全局。
 	StopIPPools()
 	ipPools = conf.IPPools
 	for tag, pool := range ipPools {

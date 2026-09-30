@@ -350,7 +350,6 @@ private fun loadProfiles(context: Context): List<Nat64Profile> {
         }
     }.getOrNull()
     if (existing != null) return existing
-    // 首次进入：预置桌面版 SniShaper 内置 NAT64 服务商
     val seeded = listOf(
         Nat64Profile("level66", "level66", "2001:67c:2960:6464::"),
         Nat64Profile("nat64.net", "nat64.net", "2a01:4f9:c010:3f02:64::"),

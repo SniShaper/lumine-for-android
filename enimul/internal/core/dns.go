@@ -42,9 +42,6 @@ var (
 	lastDNSConfig   DNSConfig
 )
 
-// runtimeStateMu 保护上述 DNS 运行时全局变量与 desync.go 中的 TTL 探测全局
-// 变量：setDNS/setTTLProbing（配置加载、网络切换重建）与在途会话并发读之间
-// 的数据竞争。写侧在局部完成全部校验与构建后，在锁下一次性提交。
 var runtimeStateMu sync.RWMutex
 
 type DNSConfig struct {
@@ -64,7 +61,6 @@ type DNSConfig struct {
 	DoHSocks5Addr string `json:"doh_socks5_addr"`
 }
 
-// exchangeUpstream 返回当前配置的单端点上游交换函数（无锁快照读取）。
 func exchangeUpstream(req *dns.Msg) (*dns.Msg, error) {
 	runtimeStateMu.RLock()
 	single := dnsExchange
@@ -313,7 +309,6 @@ func setDNS(c DNSConfig) error {
 		}
 	}
 
-	// 全部端点校验与构建完成，锁下一次性提交，避免半提交的不一致状态。
 	runtimeStateMu.Lock()
 	lastDNSConfig = c
 	dnsAddr = c.Addr
@@ -702,8 +697,6 @@ func hasEDNS0Subnet(resp *dns.Msg) bool {
 	return false
 }
 
-// doQClient 按 RFC 9250 实现 DoQ：每条查询独占一条 QUIC 流，消息不带长度前缀，
-// 写后关闭写侧，读到对端 FIN 即视为响应结束。连接在端点复用，出错时重连一次。
 type doQClient struct {
 	endpoint string
 	server   string

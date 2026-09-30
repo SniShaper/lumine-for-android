@@ -50,7 +50,6 @@ func setTTLProbing(c TTLProbingConfig) error {
 			return E.WithStr("init TTL cache", err)
 		}
 	}
-	// 校验与构建完成后，锁下一次性提交，避免半提交的不一致状态。
 	runtimeStateMu.Lock()
 	lastTTLProbingConfig = c
 	calcTTL = calc
@@ -120,7 +119,6 @@ func parseTTLRules(conf string) ([]ttlRule, error) {
 	return rules, nil
 }
 
-// buildCalcTTL 依据规则串构建 TTL 计算函数（不触碰全局变量）。
 func buildCalcTTL(conf string) (func(int) (int, error), error) {
 	if conf == "" {
 		return func(ttl int) (int, error) { return ttl - 1, nil }, nil

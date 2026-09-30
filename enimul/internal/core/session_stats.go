@@ -18,8 +18,6 @@ type sessionStatsState struct {
 
 var sessionStats sessionStatsState
 
-// StatsSnapshot 描述自上次 ResetStats 以来的累计会话指标，
-// 语义与桌面版 ProxyServer.GetStats 对齐（Down/Up + 附加计数）。
 type StatsSnapshot struct {
 	Down     uint64 `json:"down"`
 	Up       uint64 `json:"up"`
@@ -29,7 +27,6 @@ type StatsSnapshot struct {
 	UptimeMs int64  `json:"uptime_ms"`
 }
 
-// ResetStats 清零全部会话计数并把起点设为当前时刻。
 func ResetStats() {
 	sessionStats.down.Store(0)
 	sessionStats.up.Store(0)
@@ -87,7 +84,6 @@ func (s StatsSnapshot) JSON() string {
 	return string(data)
 }
 
-// sessionConn 统计实际在物理链路上收发的应用字节。
 type sessionConn struct {
 	net.Conn
 }
@@ -108,7 +104,6 @@ func NewSessionConn(conn net.Conn) net.Conn {
 	return &sessionConn{Conn: conn}
 }
 
-// sessionPacketConn 统计 UDP 方向字节。
 type sessionPacketConn struct {
 	net.PacketConn
 }

@@ -101,8 +101,6 @@ fun AboutScreen(navController: NavController) {
                             color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                // 使用矢量前景自绘品牌标记；R.mipmap.ic_launcher 在 API 26+
-                                // 是 AdaptiveIcon，painterResource 不支持，会抛异常。
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_launcher_foreground),
                                     contentDescription = null,

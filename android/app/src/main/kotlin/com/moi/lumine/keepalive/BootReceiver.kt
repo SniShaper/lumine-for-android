@@ -14,12 +14,9 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action
         if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_MY_PACKAGE_REPLACED) return
 
-        // 未开启代理 → 不保活
         if (!KeepAlive.shouldRun(context)) return
 
         val pendingResult = goAsync()
-        // 作用域生命周期与 goAsync 绑定：任务结束（含异常）后 cancel，
-        // 避免每次广播遗留一个永不取消的 CoroutineScope。
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
             try {

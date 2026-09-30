@@ -33,13 +33,6 @@ data class NetworkStatus(
     val lastEventAt: Long = 0L
 )
 
-/**
- * 底层网络环境监控（对齐桌面端 IPv6 可用性/网络变化处理）：
- * - 监听默认网络变化（Wi-Fi <-> 蜂窝 / onLost / onAvailable）；
- * - 由 LinkProperties 推导 IPv6 可用性（ULA 计入，语义与桌面 net.Interfaces 检查一致）；
- * - 仅 IPv4 网络时按 RFC 7050 探测运营商 NAT64 前缀（ipv4only.arpa AAAA 内嵌 192.0.0.170/171）；
- * - 网络变更后通知 Go 引擎清缓存（Mobile.onNetworkChanged）。
- */
 object NetworkMonitor {
     private const val TAG = "NetworkMonitor"
     private const val CHANGE_DEBOUNCE_MS = 500L
@@ -167,14 +160,6 @@ object NetworkMonitor {
         }
     }
 
-    /**
-     * RFC 7050：向 DoH 查询 ipv4only.arpa 的 AAAA；若应答内嵌
-     * 192.0.0.170 / 192.0.0.171（64:ff9b:: 兼容），低 32 位置零即 NAT64 前缀。
-     *
-     * K12: Uses the user's actual DNS config; skips probe for non-DoH types
-     * (e.g., "udp", "tcp") since only DoH endpoints support DNS-over-HTTPS
-     * query format required by this probe.
-     */
     private suspend fun detectNat64Prefix(dnsConfig: DnsConfig): String? = withContext(Dispatchers.IO) {
         // K12: skip NAT64 probe for non-DoH DNS types
         val dnsType = dnsConfig.type.lowercase()

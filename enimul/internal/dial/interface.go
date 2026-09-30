@@ -133,7 +133,6 @@ func (ifaces networkInterfaces) manualSelect() (*networkInterface, error) {
 		var i int
 		_, err := fmt.Scanln(&i)
 		if err != nil {
-			// stdin 不可用/扫描失败（如非交互环境）时不能静默回退到 0 号接口。
 			return nil, E.WithStr("read interface index from stdin", err)
 		}
 		if i < 0 || i >= len(ifaces) {

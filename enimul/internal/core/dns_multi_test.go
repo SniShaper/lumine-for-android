@@ -57,7 +57,6 @@ func TestExchangeMsgRotatesToHealthyEndpoint(t *testing.T) {
 	if dnsExchangeIdx.Load() != 1 {
 		t.Fatalf("sticky index not updated: got %d want 1", dnsExchangeIdx.Load())
 	}
-	// 健康端点应被粘住：再次调用不经过故障端点
 	resp, err = exchangeMsg(msg)
 	if err != nil {
 		t.Fatalf("second exchangeMsg returned error: %v", err)

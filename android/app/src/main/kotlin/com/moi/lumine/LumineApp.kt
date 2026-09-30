@@ -24,18 +24,15 @@ class LumineApp : Application() {
         installCrashLogHandler()
         enableFdsanWarnIfFlagged()
 
-        // 开启过代理才保活：调度闹钟/JobScheduler/WorkManager
         if (KeepAlive.shouldRun(this)) {
             KeepAlive.scheduleAll(this)
         }
 
-        // 网络环境监控（IPv6/NAT64 检测 + 引擎缓存刷新），进程级单例
         NetworkMonitor.start(this)
 
         startWatchdog()
     }
 
-    // 未捕获 Java 异常落盘到 logs/crash_*.txt，随会话日志目录一并导出
     private fun enableFdsanWarnIfFlagged() {
         val flag = File(filesDir, "fdsan_warn").exists()
         val debuggable = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -75,7 +72,6 @@ class LumineApp : Application() {
         }
     }
 
-    // 进程存活但服务已死 → 拉起（每 10 秒检查，仅代理开启时）
     private fun startWatchdog() {
         scope.launch {
             while (isActive) {

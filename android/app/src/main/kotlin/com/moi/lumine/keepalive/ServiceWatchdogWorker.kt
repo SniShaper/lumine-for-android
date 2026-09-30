@@ -14,7 +14,6 @@ class ServiceWatchdogWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        // 未开启代理 → 不需要保活，取消自身
         if (!KeepAlive.shouldRun(applicationContext)) {
             cancel(applicationContext)
             return Result.success()

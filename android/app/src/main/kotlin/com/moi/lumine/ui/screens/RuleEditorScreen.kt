@@ -15,7 +15,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -27,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,7 +51,6 @@ import com.moi.lumine.ui.components.SectionHeader
 
 private const val DEFAULT_NAT64_PREFIX = "2001:67c:2960:6464::"
 
-// 上游(Upstream)字段允许 "ip:port" 输入，但 host 只接受单 IP/域名 → 去除端口。
 private fun sanitizeHost(raw: String): String {
     val t = raw.trim()
     if (t.isEmpty()) return ""
@@ -110,6 +112,7 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
     var oob by remember(ruleKey, initialPolicy) { mutableStateOf(initialPolicy.oob ?: false) }
     var waitForAck by remember(ruleKey, initialPolicy) { mutableStateOf(initialPolicy.waitForAck ?: false) }
     var editableRuleKey by remember(ruleKey) { mutableStateOf(ruleKey) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -128,6 +131,11 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                     }
                 },
                 actions = {
+                    if (!isNewRule) {
+                        IconButton(onClick = { showDeleteDialog = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
                     IconButton(onClick = {
                         val newKey = editableRuleKey.trim()
                         if (newKey.isEmpty()) return@IconButton
@@ -412,5 +420,27 @@ fun RuleEditorScreen(navController: NavController, viewModel: ConfigViewModel, t
                 }
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("删除规则") },
+            text = { Text("确定删除 \"$ruleKey\" 吗？该操作不可撤销。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    viewModel.deleteRule(ruleKey)
+                    navController.popBackStack()
+                }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }

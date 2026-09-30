@@ -54,9 +54,6 @@ fun RoutingScreen(navController: NavController, viewModel: ConfigViewModel) {
         mode = config.defaultPolicy.mode ?: "direct"
     }
 
-    // 实时流量流向：从服务侧已收集的 VpnRuntimeState 日志快照提取最近的
-    // TCP/UDP 转发行。不要直接调用 Mobile.getLogs()——那会与服务日志泵
-    // 竞争抽干 Go 侧的日志缓冲。
     LaunchedEffect(isConnected) {
         if (!isConnected) {
             recentFlow = emptyList()

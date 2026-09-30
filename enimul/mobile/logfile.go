@@ -7,10 +7,6 @@ import (
 	"sync"
 )
 
-// 会话日志落盘：与桌面端"日志文件+轮转"对齐的移动端简化实现。
-// 路径 <workingDir>/logs/lumine.log；超过 maxLogFileBytes 后轮转为
-// lumine.<序号>.log，最多保留 keepLogFiles 个，最旧删除。
-
 const (
 	maxLogFileBytes = 1 << 20 // 1 MiB
 	keepLogFiles    = 3
@@ -60,7 +56,6 @@ func rotateLogFileLocked(dir string) error {
 		logFile = nil
 	}
 	base := filepath.Join(dir, "lumine.log")
-	// 移除超出保留数的最旧备份，整体后移一位。
 	for i := keepLogFiles; i >= 1; i-- {
 		dst := filepath.Join(dir, fmt.Sprintf("lumine.%d.log", i))
 		src := filepath.Join(dir, fmt.Sprintf("lumine.%d.log", i-1))

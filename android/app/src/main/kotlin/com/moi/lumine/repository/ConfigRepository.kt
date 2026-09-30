@@ -52,7 +52,6 @@ class ConfigRepository(private val context: Context) {
         return out
     }
 
-    /** 启用/禁用一条规则：禁用项快照到 prefs，写盘时剔除；启用时从快照移除并恢复。 */
     suspend fun setRuleEnabled(name: String, config: LumineConfig, key: String, enabled: Boolean) {
         val snap = loadDisabledSnapshots(name)
         val inDomain = config.domainPolicies.containsKey(key)
@@ -72,6 +71,20 @@ class ConfigRepository(private val context: Context) {
         }
         prefs.edit().putString(disabledPrefKey(name), snap.toString()).apply()
         saveConfig(name, config)
+    }
+
+    suspend fun deleteRule(name: String, config: LumineConfig, key: String): LumineConfig {
+        val snap = loadDisabledSnapshots(name)
+        if (snap.has(key)) {
+            snap.remove(key)
+            prefs.edit().putString(disabledPrefKey(name), snap.toString()).apply()
+        }
+        val updated = config.copy(
+            domainPolicies = config.domainPolicies - key,
+            ipPolicies = config.ipPolicies - key
+        )
+        saveConfig(name, updated)
+        return updated
     }
 
     private fun stripDisabled(config: LumineConfig, name: String): LumineConfig {
@@ -145,13 +158,10 @@ class ConfigRepository(private val context: Context) {
         }
     }
 
-    // 同目录临时文件 + 原子重命名：进程崩溃/断电最多留下 .tmp 残留，
-    // 不会把正式配置文件截断为半写状态（K6）。
     private fun writeTextAtomic(file: File, content: String) {
         val tmp = File(file.parentFile, file.name + ".tmp")
         tmp.writeText(content)
         if (!tmp.renameTo(file)) {
-            // Linux rename(2) 本应原子覆盖；此处兜底极少见的失败
             file.delete()
             if (!tmp.renameTo(file)) {
                 tmp.delete()
@@ -400,10 +410,6 @@ class ConfigRepository(private val context: Context) {
         ExportedLogFile(uri = uri, fileName = fileName)
     }
 
-    /**
-     * 从 content Uri 导入配置：读文本 -> moshi 解析 -> mobile.CheckConfig 引擎校验。
-     * @return 成功返回 (null, 已保存的配置名)；失败返回 (错误信息, null)。
-     */
     suspend fun importConfigFromUri(uri: Uri): Pair<String?, String?> = withContext(Dispatchers.IO) {
         val content = try {
             context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }

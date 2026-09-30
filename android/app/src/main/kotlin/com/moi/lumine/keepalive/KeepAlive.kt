@@ -7,14 +7,6 @@ import androidx.core.content.ContextCompat
 import com.moi.lumine.LumineVpnService
 import com.moi.lumine.repository.ConfigRepository
 
-/**
- * 保活公共入口：所有保活组件（闹钟/JobScheduler/WorkManager/无障碍/开机广播）
- * 统一通过本类检查状态并拉起 [LumineVpnService]。
- *
- * 状态依据：ConfigRepository.vpn_should_run（用户启动过代理即为 true）。
- * 服务已死但标记还在 → startForegroundService 不带 CONFIG_NAME，
- * LumineVpnService 会走 recover 路径自动用上次配置恢复。
- */
 object KeepAlive {
 
     @Volatile

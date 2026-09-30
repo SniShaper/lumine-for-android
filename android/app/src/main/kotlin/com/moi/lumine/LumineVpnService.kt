@@ -28,8 +28,6 @@ import mobile.Mobile // This will be available after gomobile bind
 
 class LumineVpnService : VpnService() {
 
-    // vpnInterface/coreTunFd/configName 会在主线程与 lifecycle 执行线程间读写，
-    // 必须 @Volatile；vpnInterface 的判空-使用-清空统一走 transitionLock 互斥。
     @Volatile private var vpnInterface: ParcelFileDescriptor? = null
     @Volatile private var coreTunFd: Int? = null
     @Volatile private var configName: String = "config" // Default config name
@@ -39,9 +37,6 @@ class LumineVpnService : VpnService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + transitionExecutor.asCoroutineDispatcher())
     private val repository by lazy { ConfigRepository(applicationContext) }
     private val transitionLock = Any()
-    // logPumpJob/watchdogJob 会在 lifecycle 执行线程与主线程（onDestroy/
-    // onTaskRemoved）间读写，必须 @Volatile 保证可见性，否则重复的日志泵/
-    // 看门狗可能同时运行（日志重复/状态错乱）。
     @Volatile private var logPumpJob: Job? = null
     @Volatile private var watchdogJob: Job? = null
     @Volatile private var isStarting = false
@@ -60,7 +55,6 @@ class LumineVpnService : VpnService() {
         if (repository.recordCrashRestart()) {
             suppressAutoRestart = true
             Log.w("LumineVpn", "Too many rapid restarts, suppressing auto-recovery")
-            // FdDiag.dump 涉及磁盘 IO，移出主线程
             serviceScope.launch {
                 FdDiag.dump(filesDir, "restart", "auto-recovery suppressed")
             }
@@ -70,8 +64,6 @@ class LumineVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         if (action == ACTION_STOP) {
-            // 经 startForegroundService 拉起的服务必须先 startForeground 再
-            // 停止，否则触发 ForegroundServiceDidNotStartInTimeException。
             startForeground(NOTIFICATION_ID, buildNotification("正在停止代理"))
             repository.resetCrashCounter()
             suppressAutoRestart = false
@@ -92,7 +84,6 @@ class LumineVpnService : VpnService() {
 
         if (shouldRecover && suppressAutoRestart) {
             Log.w("LumineVpn", "Suppressing auto-recovery after repeated crashes")
-            // stopSelf 前先满足前台服务时限要求（startForegroundService 拉起的场景）。
             startForeground(NOTIFICATION_ID, buildNotification("已停止自动恢复"))
             repository.setVpnShouldRun(false)
             VpnRuntimeState.setActive(false)
@@ -101,11 +92,8 @@ class LumineVpnService : VpnService() {
             return START_NOT_STICKY
         }
 
-        // 恢复路径：VPN 授权丢失（划掉重启/系统重置）时，拉起主界面重新授权，
-        // 不要在这里 startVpn()，否则 establish() 抛 SecurityException 会清掉保活标志
         if (shouldRecover && VpnService.prepare(this) != null) {
             Log.i("LumineVpn", "VPN permission lost, requesting re-authorization")
-            // startForegroundService 起的服务必须在 5 秒内 startForeground，否则系统杀服务
             startForeground(NOTIFICATION_ID, buildNotification("等待 VPN 授权"))
             VpnRuntimeState.setStatus("authorizing", "需要重新授权 VPN 权限")
             requestVpnPermissionFromUi()
@@ -114,8 +102,6 @@ class LumineVpnService : VpnService() {
 
         if (targetConfig == null) {
             Log.i("LumineVpn", "Ignoring sticky restart without persisted running state")
-            // 该路径可能由 startForegroundService 触达（恢复竞态），同样需要
-            // 先 startForeground 以免超过前台服务时限。
             startForeground(NOTIFICATION_ID, buildNotification("待机"))
             if (!Mobile.isRunning() && VpnRuntimeState.status.value.phase != "error") {
                 VpnRuntimeState.setActive(false)
@@ -176,8 +162,6 @@ class LumineVpnService : VpnService() {
             // Keep the app's own sockets out of the VPN to avoid proxy self-loops.
             applyAppRouting(builder)
 
-            // establish() 结果局部捕获后再使用，消除 check-then-act 竞态
-            // （旧代码的 vpnInterface!! 可能被并发置空导致 NPE）。
             val established = builder.establish()
             vpnInterface = established
 
@@ -208,8 +192,6 @@ class LumineVpnService : VpnService() {
                             coreOwnsTunFd = true
                         }
                         val error = Mobile.startLumine(fd.toLong(), configName)
-                        // Go 引擎在内部 dup 了一份无 fdsan 所有权的 fd；此处由 Java 关闭原始 fd，
-                        // 确保 Android 侧的所有权表项被正确清除（避免 fd 号复用触发 fdsan）。
                         closePendingTunFd()
                         if (error.isNotEmpty()) {
                             coreOwnsTunFd = false
@@ -324,13 +306,10 @@ class LumineVpnService : VpnService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // 用户要求：划掉后台 → 完全停止服务（停核心 + 移除前台通知，UI/通知状态一致）。
-        // 保活组件（无障碍/闹钟/JobScheduler）随后拉起新实例，recover 路径会重新校验 VPN 授权。
         if (KeepAlive.shouldRun(this)) {
             KeepAlive.scheduleAll(this)
             stopWatchdog()
             stopLogPump()
-            // Mobile.stopLumine 是阻塞 FFI，移出主线程避免 ANR
             serviceScope.launch {
                 performCoreShutdownIfNeeded()
             }
@@ -347,9 +326,6 @@ class LumineVpnService : VpnService() {
         isServiceRunning = false
         stopWatchdog()
         stopLogPump()
-        // Mobile.stopLumine 是阻塞 FFI，不能在主线程执行；serviceScope 即将
-        // cancel，改由 lifecycle 执行器排队执行（shutdown 不中断已排队任务），
-        // 确保 TUN fd 与引擎资源在服务销毁后仍被正确释放。
         transitionExecutor.execute {
             performCoreShutdownIfNeeded()
         }
@@ -384,8 +360,6 @@ class LumineVpnService : VpnService() {
                         .onSuccess { added += 1 }
                 }
                 if (added == 0) {
-                    // 白名单全部包名无效：静默继续会变成"全量 VPN"或空 VPN 的
-                    // 错误行为，视为配置错误并中止启动（K13）。
                     Log.e("LumineVpn", "Whitelist app routing has no valid packages: $packages")
                     throw IllegalStateException("应用分流白名单中的包名全部无效，已中止启动")
                 }
@@ -406,7 +380,6 @@ class LumineVpnService : VpnService() {
         }
 
         if (name == "config") {
-            // 资产拷贝走临时文件 + 原子重命名，避免半写损坏默认配置（K6）
             val tmp = File(filesDir, "$name.json.tmp")
             assets.open("config_default.json").use { input ->
                 tmp.outputStream().use { output ->
@@ -462,7 +435,6 @@ class LumineVpnService : VpnService() {
                 }
 
                 val now = SystemClock.elapsedRealtime()
-                // 上次恢复距今已稳定运行超过阈值 → 复位退避/放弃计数
                 if (now - lastWatchdogRecoveryAt > WATCHDOG_STABLE_RESET_MS) {
                     watchdogRecoveryAttempts = 0
                 }
@@ -508,23 +480,18 @@ class LumineVpnService : VpnService() {
     }
 
     private fun closePendingTunFd() {
-        // 与 startVpn/stopVpn 的读取路径互斥：判空-置空-关闭原子化，避免
-        // 并发下重复 close 或读到半更新状态。
         val pfd = synchronized(transitionLock) {
             coreTunFd = null
             val pending = vpnInterface
             vpnInterface = null
             pending
         }
-        // 引擎在 Go 侧 dup 接管了它自己的 fd；这里的 ParcelFileDescriptor 始终由 Java
-        // 通过正式 close() 释放，确保 Android fdsan 所有权表项被正确清除。
         runCatching { pfd?.close() }
     }
 
     private suspend fun recoverVpnFromWatchdog() {
         val attempts = ++watchdogRecoveryAttempts
 
-        // 接入既有崩溃计数器：短窗口内频繁恢复视同崩溃循环，直接放弃。
         if (repository.recordCrashRestart()) {
             giveUpWatchdogRecovery("多次快速恢复，已停止自动恢复代理")
             return
@@ -571,8 +538,6 @@ class LumineVpnService : VpnService() {
             return
         }
 
-        // 指数退避：5s→10s→…→上限 5min。退避在释放 isStopping 之后进行，
-        // 用户主动停止不会被阻塞；停止后不再重启。
         val backoffMs = minOf(
             WATCHDOG_BACKOFF_BASE_MS shl (attempts - 1),
             WATCHDOG_BACKOFF_MAX_MS

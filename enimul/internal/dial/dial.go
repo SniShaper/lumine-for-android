@@ -52,7 +52,6 @@ func DialTCPTimeout(address string, timeout time.Duration) (net.Conn, error) {
 
 type monitor = func() (net.IP, net.IP, string, error)
 
-// laddrMonitorState 跟踪运行中的本地地址监测 goroutine，便于重载/关闭时停止。
 var (
 	monitorMu     sync.Mutex
 	monitorStopCh chan struct{}
@@ -88,7 +87,6 @@ func laddrMonitor(interval time.Duration, fn monitor, stopCh chan struct{}) {
 	}
 }
 
-// stopLocalAddrMonitor 停止当前运行中的本地地址监测 goroutine（若有）。
 func stopLocalAddrMonitor() {
 	monitorMu.Lock()
 	defer monitorMu.Unlock()
@@ -98,7 +96,6 @@ func stopLocalAddrMonitor() {
 	}
 }
 
-// StopLocalAddrMonitor 停止本地地址周期监测 goroutine（引擎关闭时调用）。
 func StopLocalAddrMonitor() {
 	stopLocalAddrMonitor()
 }
@@ -209,7 +206,6 @@ func SetLocalAddr(o BindingOption) error {
 		ipv6Dialer.LocalAddr = &net.TCPAddr{IP: ipv6, Zone: zone}
 	}
 	globalIPv6Dialer.Store(ipv6Dialer)
-	// 先停旧 monitor 再按需启动新实例，避免每次配置加载叠加 goroutine。
 	stopLocalAddrMonitor()
 	if monitor != nil {
 		monitorMu.Lock()

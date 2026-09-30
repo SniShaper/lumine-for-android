@@ -185,6 +185,14 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun deleteRule(key: String) {
+        viewModelScope.launch {
+            val updated = repository.deleteRule(_selectedConfigName.value, _currentConfig.value, key)
+            _currentConfig.value = updated
+            _disabledRuleKeys.value = repository.disabledRuleKeys(_selectedConfigName.value)
+        }
+    }
+
     fun applyConfig(name: String) {
         _selectedConfigName.value = name
         repository.setSelectedConfigName(name)
@@ -334,7 +342,6 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         return repository.exportConfigJson(_selectedConfigName.value, _currentConfig.value)
     }
 
-    /** @return null 表示成功（已导入并选中），否则返回错误信息。 */
     suspend fun importConfigUri(uri: Uri): String? {
         val (error, configName) = repository.importConfigFromUri(uri)
         if (error != null) {

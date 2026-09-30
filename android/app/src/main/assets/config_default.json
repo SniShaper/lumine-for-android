@@ -546,6 +546,116 @@
     },
     "*abs.twimg.com": {
       "mode": "tls-rf"
+    },
+    "*f-droid.org": {
+      "mode": "tls-rf",
+      "host": "37.218.243.72"
+    },
+    "*forum.f-droid.org": {
+      "mode": "tls-rf",
+      "host": "37.218.242.53"
+    },
+    "*redd.it;*reddit.com;*redditmedia.com;*redditstatic.com": {
+      "mode": "tls-rf"
+    },
+    "*pornhub.com": {
+      "mode": "tls-rf",
+      "host": "66.254.114.41"
+    },
+    "*.gov;*.icu": {
+      "mode": "tls-rf"
+    },
+    "*spotify.com;*scdn.co;*spotifycdn.com;*spoti.fi": {
+      "mode": "tls-rf"
+    },
+    "*supabase.co": {
+      "mode": "tls-rf",
+      "host": "76.76.21.61"
+    },
+    "*challenges.cloudflare.com": {
+      "mode": "direct"
+    },
+    "*openstreetmap.org;*osm.org": {
+      "mode": "tls-rf"
+    },
+    "*jtvnw.net;*ttvnw.net": {
+      "mode": "tls-rf"
+    },
+    "*signal.org": {
+      "mode": "tls-rf"
+    },
+    "*bloomberg.com": {
+      "mode": "tls-rf"
+    },
+    "*vimeo.com": {
+      "mode": "tls-rf"
+    },
+    "*bandcamp.com": {
+      "mode": "tls-rf"
+    },
+    "*theguardian.com": {
+      "mode": "tls-rf"
+    },
+    "*tumblr.com": {
+      "mode": "tls-rf"
+    },
+    "*soundcloud.com": {
+      "mode": "tls-rf"
+    },
+    "*pypi.org": {
+      "mode": "tls-rf"
+    },
+    "*anthropic.com": {
+      "mode": "tls-rf"
+    },
+    "*linkedin.com": {
+      "mode": "tls-rf"
+    },
+    "*npmjs.com": {
+      "mode": "tls-rf"
+    },
+    "*gitlab.com": {
+      "mode": "tls-rf"
+    },
+    "*netflix.com": {
+      "mode": "tls-rf"
+    },
+    "*notion.so;*notion.com": {
+      "mode": "tls-rf",
+      "host": "208.103.161.17"
+    },
+    "*roblox.com": {
+      "mode": "tls-rf"
+    },
+    "*stackoverflow.com": {
+      "mode": "tls-rf"
+    },
+    "*epicgames.com": {
+      "mode": "tls-rf"
+    },
+    "*slack.com": {
+      "mode": "tls-rf"
+    },
+    "*xbox.com": {
+      "mode": "tls-rf"
+    },
+    "*playstation.com": {
+      "mode": "tls-rf"
+    },
+    "*zoom.us": {
+      "mode": "tls-rf"
+    },
+    "*tiktok.com;*tiktokv.com": {
+      "mode": "tls-rf"
+    },
+    "*wsj.com;*wsj.net": {
+      "mode": "tls-rf"
+    },
+    "*torproject.org": {
+      "mode": "tls-rf"
+    },
+    "*shutterstock.com": {
+      "mode": "tls-rf"
     }
   }
 }

@@ -47,7 +47,6 @@ func serveLocalDNSTCP(conn net.Conn, logger log.Logger) {
 			return
 		}
 
-		// TCP DNS 长度前缀为 uint16，超长响应不能回绕为小端长度写入。
 		if len(resp) > math.MaxUint16 {
 			logger.Error("Hijacked TCP DNS response too large:", len(resp), "bytes")
 			return

@@ -49,7 +49,6 @@ func (w *LogWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// GetLogs 返回并清空自上次调用以来的所有日志
 func GetLogs() string {
 	logMu.Lock()
 	defer logMu.Unlock()
@@ -68,15 +67,12 @@ func clearLogsLocked() {
 	logEntries = nil
 }
 
-// getWorkingDir 返回当前工作目录（锁保护读取；workingDirMu 为叶子锁，
-// 不会与 mu/logFileMu 形成嵌套，避免锁序反转）。
 func getWorkingDir() string {
 	workingDirMu.RLock()
 	defer workingDirMu.RUnlock()
 	return workingDir
 }
 
-// SetWorkingDir 设置核心运行的基础路径（由 Android 端提供私有目录路径）
 func SetWorkingDir(dir string) {
 	workingDirMu.Lock()
 	defer workingDirMu.Unlock()
@@ -101,7 +97,6 @@ func isSafeConfigName(name string) bool {
 	return true
 }
 
-// StartLumine 指定配置名启动核心和 tun2socks
 func StartLumine(fd int, configName string) string {
 	mu.Lock()
 	defer mu.Unlock()
@@ -163,7 +158,6 @@ func StartLumine(fd int, configName string) string {
 	return ""
 }
 
-// StopLumine 停止服务
 func StopLumine() {
 	mu.Lock()
 	defer mu.Unlock()
@@ -174,7 +168,6 @@ func StopLumine() {
 
 	_ = engine.StopErr()
 	engine.ClearCustomProxy()
-	// 停止 IP 池扫描与本地地址监测的周期 goroutine，避免跨会话累积。
 	lumine.StopIPPools()
 	dial.StopLocalAddrMonitor()
 	isRunning = false
@@ -182,14 +175,12 @@ func StopLumine() {
 	closeSessionLog()
 }
 
-// IsRunning 返回核心当前是否正在运行。
 func IsRunning() bool {
 	mu.Lock()
 	defer mu.Unlock()
 	return isRunning
 }
 
-// CheckConfig 验证 JSON 语法与 Lumine 规则合法性
 func CheckConfig(jsonContent string) string {
 	var conf lumine.Config
 	if err := json.Unmarshal([]byte(jsonContent), &conf); err != nil {
@@ -198,12 +189,10 @@ func CheckConfig(jsonContent string) string {
 	return ""
 }
 
-// GetVersion 返回版本号
 func GetVersion() string {
 	return "enimul-" + lumine.Version + "-android"
 }
 
-// HelloSplice 返回当前平台对 splice 的可用性说明。
 func HelloSplice() string {
 	if runtime.GOOS == "linux" {
 		return "Splice is available on Linux/Android"
@@ -211,13 +200,10 @@ func HelloSplice() string {
 	return "Splice is NOT available on " + runtime.GOOS
 }
 
-// GetStats 返回会话统计 JSON：{down,up,blocked,tcp_conns,udp_conns,uptime_ms}。
 func GetStats() string {
 	return lumine.SnapshotStats().JSON()
 }
 
-// OnNetworkChanged 在底层默认网络切换（Wi-Fi<->蜂窝、onLost/onAvailable）后调用，
-// 清空 DNS/反向解析/TTL 缓存使后续解析走当前网络路径。
 func OnNetworkChanged() string {
 	if err := lumine.ResetRuntimeState(); err != nil {
 		mainLogger.Error("network changed: reset runtime state: ", err)
@@ -227,12 +213,10 @@ func OnNetworkChanged() string {
 	return ""
 }
 
-// SetLogFileEnabled 开关会话日志落盘（<workingDir>/logs/lumine*.log），默认开启。
 func SetLogFileEnabled(enabled bool) {
 	setLogFilesEnabled(enabled)
 }
 
-// LogFilePath 返回当前会话日志目录路径，供宿主应用展示/清理（未设置工作目录时返回空）。
 func LogFilePath() string {
 	dir := getWorkingDir()
 	if dir == "" {

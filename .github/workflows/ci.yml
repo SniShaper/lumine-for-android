@@ -13,6 +13,7 @@ jobs:
     env:
       ANDROID_API_LEVEL: '37.2'
       GOMOBILE_ANDROID_API: '24'
+      GOMOBILE_VERSION: 'v0.0.0-20261011034528-197770444867'
       ANDROID_BUILD_TOOLS: '36.0.0'
       ANDROID_NDK_VERSION: '30.0.14904198'
 
@@ -107,7 +108,7 @@ jobs:
           GOBIN="$(go env GOPATH)/bin"
           echo "$GOBIN" >> "$GITHUB_PATH"
           export PATH="$GOBIN:$PATH"
-          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}
           gomobile init
 
       - name: Build Android core AAR + Vet Go modules
